@@ -14,337 +14,382 @@
     limitations under the License.
 */
 
-#include "ap2_qmk_led.h"
 #include "board.h"
-#include "ch.h"
 #include "hal.h"
-#include "light_utils.h"
-#include "miniFastLED.h"
-#include "profiles.h"
+#include "ch.h"
 #include "string.h"
+#include "ap2_qmk_led.h"
+#include "light_utils.h"
+#include "profiles.h"
+#include "extra_profiles.h"
+#include "miniFastLED.h"
 
-static void animationCallback(void);
+#define sysTime chVTGetSystemTime
+
+static void columnCallback(GPTDriver* driver);
+static void animationCallback(GPTDriver* driver);
 static void executeMsg(msg_t msg);
-static void executeProfile(bool init);
+static void switchProfile(void);
+static void executeProfile(void);
+static void executeKeypress(uint8_t col, uint8_t row);
+static void keyPressedCallback(void);
 static void disableLeds(void);
 static void enableLeds(void);
+static void toggleLeds(void);
 static void ledSet(void);
 static void ledSetRow(void);
 static void setProfile(void);
-static void changeMask(uint8_t mask);
-static void nextIntensity(void);
-static void nextSpeed(void);
-static void setForegroundColor(void);
-static void handleKeypress(msg_t msg);
+static void setBrightness(void);
+static void bltConnecting(void);
+static void ledPostProcess(void);
+
+static bool ledState = false;
+static bool ledTimeoutState = true;
+static bool capsState = false;
+// 0 means that it is not connecting
+static uint8_t bltState = 0;
+static int brightness = 100;
+static bool gamingMode = false;
+
+#define LED_TIMEOUT 180
+static systime_t lastKeypress;
+
 
 ioline_t ledColumns[NUM_COLUMN] = {
-    LINE_LED_COL_1,  LINE_LED_COL_2,  LINE_LED_COL_3,  LINE_LED_COL_4,
-    LINE_LED_COL_5,  LINE_LED_COL_6,  LINE_LED_COL_7,  LINE_LED_COL_8,
-    LINE_LED_COL_9,  LINE_LED_COL_10, LINE_LED_COL_11, LINE_LED_COL_12,
-    LINE_LED_COL_13, LINE_LED_COL_14};
-
-ioline_t ledRows[NUM_ROW * 4] = {
-    LINE_LED_ROW_1_R, LINE_LED_ROW_1_G, LINE_LED_ROW_1_B, 0,
-    LINE_LED_ROW_2_R, LINE_LED_ROW_2_G, LINE_LED_ROW_2_B, 0,
-    LINE_LED_ROW_3_R, LINE_LED_ROW_3_G, LINE_LED_ROW_3_B, 0,
-    LINE_LED_ROW_4_R, LINE_LED_ROW_4_G, LINE_LED_ROW_4_B, 0,
-    LINE_LED_ROW_5_R, LINE_LED_ROW_5_G, LINE_LED_ROW_5_B, 0,
+  LINE_LED_COL_1, 
+  LINE_LED_COL_2, 
+  LINE_LED_COL_3, 
+  LINE_LED_COL_4, 
+  LINE_LED_COL_5, 
+  LINE_LED_COL_6, 
+  LINE_LED_COL_7, 
+  LINE_LED_COL_8, 
+  LINE_LED_COL_9, 
+  LINE_LED_COL_10,
+  LINE_LED_COL_11,
+  LINE_LED_COL_12,
+  LINE_LED_COL_13,
+  LINE_LED_COL_14
 };
 
-#define REFRESH_FREQUENCY 200
+ioline_t ledRows[NUM_ROW * 4] = {
+  LINE_LED_ROW_1_R,
+  LINE_LED_ROW_1_G,
+  LINE_LED_ROW_1_B,
+  0,
+  LINE_LED_ROW_2_R,
+  LINE_LED_ROW_2_G,
+  LINE_LED_ROW_2_B,
+  0,
+  LINE_LED_ROW_3_R,
+  LINE_LED_ROW_3_G,
+  LINE_LED_ROW_3_B,
+  0,
+  LINE_LED_ROW_4_R,
+  LINE_LED_ROW_4_G,
+  LINE_LED_ROW_4_B,
+  0,
+  LINE_LED_ROW_5_R,
+  LINE_LED_ROW_5_G,
+  LINE_LED_ROW_5_B,
+  0
+};
 
-#define ANIMATION_TIMER_FREQUENCY 60
+#define REFRESH_FREQUENCY           150
+#define ANIMATION_TIMER_FREQUENCY   60
 
-#define KEY_COUNT 70
+#define LEN(a) (sizeof(a)/sizeof(*a))
 
-#define SERIAL_CHECK_FREQUENCY 4095
 
-#define LEN(a) (sizeof(a) / sizeof(*a))
+typedef void (*anim_tick)( led_t* );
+typedef void (*anim_keypress)( uint8_t col, uint8_t row, led_t* keyColors );
 
-/*
- * Active profiles
- * Add profiles from source/profiles.h in the profile array
- */
-typedef bool (*lighting_callback)(led_t *, uint8_t);
-
-/*
- * keypress handler
- */
-typedef void (*keypress_handler)(led_t *colors, uint8_t row, uint8_t col,
-                                 uint8_t intensity);
-
-typedef void (*profile_init)(led_t *colors);
 
 typedef struct {
-  // callback function implementing the lighting effect
-  lighting_callback callback;
-  // For static effects, their `callback` is called only once.
-  // For dynamic effects, their `callback` is called in a loop.
-  // This field controls the animation speed by specifying
-  // how many ticks to skip before calling the callback again.
-  // For example, 8000 in the array means that `callback` is called on every
-  // 8000th tick. Different 4 values can be specified to allow different
-  // speeds of the same effect. For static effects, the array must contain {0,
-  // 0, 0, 0}.
-  uint16_t animationSpeed[4];
-  // In case the profile is reactive, it responds to each keypress.
-  // This callback is called with the locations of the pressed keys.
-  keypress_handler keypressCallback;
-  // Some profiles might need additional setup when just enabled.
-  // This callback defines such logic if needed.
-  profile_init profileInit;
+  anim_tick tick;
+  anim_keypress keypress;
+  uint8_t fps;
 } profile;
 
 profile profiles[] = {
-    {red, {0, 0, 0, 0}, NULL, NULL},
-    {green, {0, 0, 0, 0}, NULL, NULL},
-    {blue, {0, 0, 0, 0}, NULL, NULL},
-    {rainbowHorizontal, {0, 0, 0, 0}, NULL, NULL},
-    {rainbowVertical, {0, 0, 0, 0}, NULL, NULL},
-    {animatedRainbowVertical, {3000, 2000, 1200, 600}, NULL, NULL},
-    {animatedRainbowFlow, {1000, 400, 200, 140}, NULL, NULL},
-    {animatedRainbowWaterfall, {1600, 1200, 800, 400}, NULL, NULL},
-    {animatedBreathing, {1600, 1200, 800, 400}, NULL, NULL},
-    {animatedWave, {1200, 800, 400, 200}, NULL, NULL},
-    {animatedSpectrum, {1600, 1200, 800, 400}, NULL, NULL},
-    {reactiveFade,
-     {400, 1600, 1200, 800},
-     reactiveFadeKeypress,
-     reactiveFadeInit},
+  { anim_rain, 0, 30 },
+  { anim_thunder, 0, 30 },
+  { animatedRainbowFlow, 0, 30 },
+  { anim_breathing, pressed_breathing, 30 },
+  { anim_snowing, 0, 30 }
 };
 
+
 static uint8_t currentProfile = 0;
-static uint8_t amountOfProfiles = sizeof(profiles) / sizeof(profile);
-static uint8_t currentSpeed = 0;
-static uint16_t animationSkipTicks = 0;
+static uint8_t amountOfProfiles = sizeof(profiles)/sizeof(profile);
 
-static binary_semaphore_t ledDisabledSem;
+led_t ledColors[70];
+led_t postProcessledColors[70];
+static uint32_t currentColumn = 0;
+static uint32_t columnPWMCount = 0;
 
-// each color from RGB is rightshifted by this amount
-// default zero corresponds to full intensity, max 3 correponds to 1/8 of color
-static uint8_t ledIntensity = 0;
+// BFTM0 Configuration, this runs at 15 * REFRESH_FREQUENCY Hz
+static const GPTConfig bftm0Config = {
+  .frequency = NUM_COLUMN * REFRESH_FREQUENCY * 2 * 16,
+  .callback = columnCallback
+};
 
-static volatile bool ledEnabled = false;
+// Lighting animation refresh timer
+static const GPTConfig lightAnimationConfig = {
+  .frequency = ANIMATION_TIMER_FREQUENCY,
+  .callback = animationCallback
+};
 
-// If the current profile is animated but the animation callback does not need
-// to be called, this flag is set to false. The only use case for now is with
-// reactiveFade profile when there are no LEDs to be enabled. This suspends the
-// current thread which should reduce power draw.
-static volatile bool reactiveNeedsUpdate = false;
-
-// Flag to check if there is a foreground color currently active
-static bool is_foregroundColor_set = false;
-
-uint8_t ledMasks[KEY_COUNT];
-led_t ledColors[KEY_COUNT];
-static uint16_t currentRow = 0;
-
-static const SerialConfig usart1Config = {.speed = 115200};
+static const SerialConfig usart1Config = {
+  .speed = 115200
+};
 
 static uint8_t commandBuffer[64];
-static uint32_t enableRow = 0;
-
-void updateAnimationSpeed(void) {
-  animationSkipTicks = profiles[currentProfile].animationSpeed[currentSpeed];
-}
 
 /*
- * Reactive profiles are profiles which react to keypresses.
- * This helper is used to notify the main controller that
- * the current profile is reactive and coordinates of pressed
- * keys should be sent to LED controller.
+ * Thread 1.
  */
-void forwardReactiveFlag(void) {
-  uint8_t isReactive = 0;
-  if (profiles[currentProfile].keypressCallback != NULL) {
-    isReactive = 1;
+THD_WORKING_AREA(waThread1, 255);
+__attribute__((noreturn)) THD_FUNCTION(Thread1, arg) {
+  (void)arg;
+
+  while(true){
+    msg_t msg;
+    msg = sdGet(&SD1);
+    if(msg >= MSG_OK){
+      executeMsg(msg);
+    }
   }
-  sdWrite(&SD1, &isReactive, 1);
 }
 
 /*
  * Execute action based on a message
  */
-static inline void executeMsg(msg_t msg) {
+void executeMsg(msg_t msg){
   switch (msg) {
-  case CMD_LED_ON:
-    enableLeds();
-    break;
-  case CMD_LED_OFF:
-    disableLeds();
-    break;
-  case CMD_LED_SET:
-    ledSet();
-    break;
-  case CMD_LED_SET_ROW:
-    ledSetRow();
-    break;
-  case CMD_LED_SET_PROFILE:
-    setProfile();
-    forwardReactiveFlag();
-    break;
-  case CMD_LED_NEXT_PROFILE:
-    currentProfile = (currentProfile + 1) % amountOfProfiles;
-    forwardReactiveFlag();
-    executeProfile(true);
-    updateAnimationSpeed();
-    break;
-  case CMD_LED_PREV_PROFILE:
-    currentProfile =
-        (currentProfile + (amountOfProfiles - 1u)) % amountOfProfiles;
-    executeProfile(true);
-    updateAnimationSpeed();
-    break;
-  case CMD_LED_GET_PROFILE:
-    sdWrite(&SD1, &currentProfile, 1);
-    break;
-  case CMD_LED_GET_NUM_PROFILES:
-    sdWrite(&SD1, &amountOfProfiles, 1);
-    break;
-  case CMD_LED_SET_MASK:
-    changeMask(0xFF);
-    break;
-  case CMD_LED_CLEAR_MASK:
-    changeMask(0x00);
-    break;
-  case CMD_LED_NEXT_INTENSITY:
-    nextIntensity();
-    break;
-  case CMD_LED_NEXT_ANIMATION_SPEED:
-    nextSpeed();
-    break;
-  case CMD_LED_SET_FOREGROUND_COLOR:
-    setForegroundColor();
-    break;
-  default:
-    if (msg & 0b10000000) {
-      handleKeypress(msg);
-    }
-    break;
-  }
-}
+    case LED_TOGGLE:
+      toggleLeds();
+      break;
 
-void changeMask(uint8_t mask) {
-  size_t bytesRead;
-  bytesRead = sdReadTimeout(&SD1, commandBuffer, 1, 10000);
+    case LED_NEXT_PROFILE:
+      currentProfile = (currentProfile+1)%amountOfProfiles;
+      // executeProfile();
+      break;
 
-  if (bytesRead == 1) {
-    if (commandBuffer[0] < KEY_COUNT) {
-      ledMasks[commandBuffer[0]] = mask;
-    }
-  }
-}
+    case LED_PREV_PROFILE:
+      currentProfile = (currentProfile+(amountOfProfiles-1u))%amountOfProfiles;
+      // executeProfile();
+      break;
 
-void nextIntensity() {
-  ledIntensity = (ledIntensity + 1) % 4;
-  executeProfile(false);
-}
+    case LED_SET_PROFILE:
+      setProfile();
+      break;
 
-void nextSpeed() {
-  currentSpeed = (currentSpeed + 1) % 4;
-  is_foregroundColor_set = false;
-  updateAnimationSpeed();
-}
+    case LED_GET_PROFILE:
+      sdWrite(&SD1, &currentProfile, 1);
+      break;
 
-/*
- * The message contains 1 flag bit which is always set
- * and then 3 bits of row and 4 bits of col.
- * Because this callback is called on every keypress,
- * the data is packed into a single byte to decrease the data traffic.
- */
-inline void handleKeypress(msg_t msg) {
-  uint8_t row = (msg >> 4) & 0b111;
-  uint8_t col = msg & 0b1111;
-  keypress_handler handler = profiles[currentProfile].keypressCallback;
-  if (handler != NULL) {
-    handler(ledColors, row, col, ledIntensity);
-    if (!reactiveNeedsUpdate && ledEnabled) {
-      reactiveNeedsUpdate = true;
-      chBSemReset(&ledDisabledSem, true);
-    }
-  }
-}
+    case LED_GET_PROFILE_COUNT:
+      sdWrite(&SD1, &amountOfProfiles, 1);
+      break;
 
-/*
- * Set all the leds to the specified color
- */
-void setForegroundColor() {
-  size_t bytesRead;
-  bytesRead = sdReadTimeout(&SD1, commandBuffer, 3, 10000);
+    case LED_KEY_PRESSED:
+      keyPressedCallback();
+      break;
 
-  if (bytesRead >= 3) {
-    uint8_t colorBytes[4] = {commandBuffer[2], commandBuffer[1],
-                             commandBuffer[0], 0x00};
-    uint32_t ForegroundColor = *(uint32_t *)&colorBytes;
-    is_foregroundColor_set = true;
+    case LED_CAPS_ON:
+      capsState = true;
+      break;
 
-    setAllKeysColor(ledColors, ForegroundColor, ledIntensity);
+    case LED_CAPS_OFF:
+      capsState = false;
+      break;
+
+    case LED_BLT_CONNECTING:
+      bltConnecting();
+      break;
+
+    case LED_BLT_CONNECTED:
+      bltState = 0;
+      break;
+
+    case LED_BRIGHT_DOWN:
+      brightness -= 20;
+      if (brightness < 10)
+        brightness = 10;
+      break;
+
+    case LED_BRIGHT_UP:
+      brightness += 20;
+      if (brightness > 100)
+        brightness = 100;
+      break;
+
+    case LED_SET_BRIGHT:
+      setBrightness();
+      break;
+
+    case LED_GET_BRIGHT:
+      sdPut(&SD1, (uint8_t)(brightness));
+      break;
+
+    case LED_GAMING_ON:
+      gamingMode = true;
+      break;
+
+    case LED_GAMING_OFF:
+      gamingMode = false;
+      break;
+
+    default:
+      break;
   }
 }
 
 /*
  * Set profile and execute it
  */
-void setProfile() {
+void setProfile(){
   size_t bytesRead;
   bytesRead = sdReadTimeout(&SD1, commandBuffer, 1, 10000);
 
-  if (bytesRead == 1) {
-    if (commandBuffer[0] < amountOfProfiles) {
-      currentProfile = commandBuffer[0];
-      executeProfile(true);
-      updateAnimationSpeed();
+  if(bytesRead == 1) {
+    if(commandBuffer[0] < amountOfProfiles) {
+      currentProfile = commandBuffer[0] % amountOfProfiles;
     }
   }
+
+  // set colors without turning on leds (if we have a saved profile off by default in eeprom)
+  executeProfile();
+}
+
+void bltConnecting() {
+  size_t bytesRead;
+  bytesRead = sdReadTimeout(&SD1, commandBuffer, 1, 10000);
+
+  if(bytesRead == 1){
+    bltState = commandBuffer[0];
+  }
+}
+
+
+static void setBrightness() {
+  size_t bytesRead;
+  bytesRead = sdReadTimeout(&SD1, commandBuffer, 1, 10000);
+
+  if(bytesRead == 1) {
+    brightness = commandBuffer[0];
+  }
+}
+
+void keyPressedCallback() {
+  lastKeypress = sysTime();
+  ledTimeoutState = true;
+
+  size_t bytesRead;
+  bytesRead = sdReadTimeout(&SD1, commandBuffer, 1, 10000);
+
+  if(bytesRead == 1) {
+    uint8_t keyPos = commandBuffer[0];
+    uint8_t row = keyPos & 0xF;
+    uint8_t col = (keyPos >> 4) & 0xF; 
+    
+    executeKeypress(col, row);
+  }
+
+}
+
+/*
+ * Switch to next profile and execute it
+ */
+void switchProfile(){
+  currentProfile = (currentProfile + 1) % amountOfProfiles;
+  executeProfile();
 }
 
 /*
  * Execute current profile
  */
-void executeProfile(bool init) {
-  // Here we disable the foreground to ensure the animation will run
-  is_foregroundColor_set = false;
+void executeProfile(){
+  chSysLock();
 
-  if (init && profiles[currentProfile].profileInit != NULL) {
-    profiles[currentProfile].profileInit(ledColors);
+  if (ledState && ledTimeoutState)
+    profiles[currentProfile].tick(ledColors);
+
+  ledPostProcess();
+
+  chSysUnlock();
+}
+
+void ledPostProcess() {
+  if(ledState & ledTimeoutState)
+    memcpy(postProcessledColors, ledColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+  else
+    memset(postProcessledColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+
+
+
+  for (int i = 0; i < NUM_COLUMN * NUM_ROW; i++) {
+    postProcessledColors[i].red = (postProcessledColors[i].red * brightness) / 100;
+    postProcessledColors[i].green = (postProcessledColors[i].green * brightness) / 100;
+    postProcessledColors[i].blue = (postProcessledColors[i].blue * brightness) / 100;
   }
-  reactiveNeedsUpdate =
-      profiles[currentProfile].callback(ledColors, ledIntensity);
+
+  static const led_t capsColor = { 140, 7, 7 };
+  if (capsState) {
+    postProcessledColors[28] = capsColor;
+  }
+
+  if (bltState && bltState <= 8) {
+    postProcessledColors[bltState].red = 5;
+    postProcessledColors[bltState].green = 110;
+    postProcessledColors[bltState].blue = 5;
+  }
+
+  static const uint8_t gamingArrows[] = { 54, 66, 67, 68 };
+  static const led_t gamingArrowLedColor = { 110, 5, 5 };
+  if (gamingMode) {
+    for (int i = 0; i < LEN(gamingArrows); i++) {
+      postProcessledColors[gamingArrows[i]] = gamingArrowLedColor;
+    }
+  }
+}
+
+void executeKeypress(uint8_t col, uint8_t row) {
+  // chSysLock();
+
+  anim_keypress callback = profiles[currentProfile].keypress;
+  if (callback)
+    callback(col, row, ledColors);
+
+  // ledPostProcess();
+  // chSysUnlock();
 }
 
 /*
  * Turn off all leds
  */
 void disableLeds() {
-  ledEnabled = false;
-  reactiveNeedsUpdate = false;
-
-  chBSemReset(&ledDisabledSem, true);
-
-  palClearLine(LINE_LED_PWR);
-
-  for (int i = 0; i < NUM_ROW * 4; i++) {
-    if (i % 4 != 3) {
-      palClearLine(ledRows[i]);
-    }
-  }
-  for (int i = 0; i < NUM_COLUMN; i++) {
-    palClearLine(ledColumns[i]);
-  }
+  ledState = false;
 }
 
 /*
  * Turn on all leds
  */
-void enableLeds() {
-  ledEnabled = true;
-
-  chBSemReset(&ledDisabledSem, false);
-
-  palSetLine(LINE_LED_PWR);
-  executeProfile(true);
-  updateAnimationSpeed();
+void enableLeds(){
+  ledState = true;
 }
+
+
+void toggleLeds() {
+  if (ledState) {
+    disableLeds();
+  }
+  else {
+    enableLeds();
+  }
+}
+
 
 /*
  * Set a led based on qmk communication
@@ -353,12 +398,10 @@ void ledSet() {
   size_t bytesRead;
   bytesRead = sdReadTimeout(&SD1, commandBuffer, 4, 10000);
 
-  if (bytesRead >= 4) {
-    if (commandBuffer[0] < NUM_ROW || commandBuffer[1] < NUM_COLUMN) {
-      setKeyColor(&ledColors[commandBuffer[0] * NUM_COLUMN + commandBuffer[1]],
-                  ((uint16_t)commandBuffer[3] << 8 | commandBuffer[2]),
-                  ledIntensity);
-    }
+  if(bytesRead >= 4){
+      if(commandBuffer[0] < NUM_ROW || commandBuffer[1] < NUM_COLUMN){
+          setKeyColor(&postProcessledColors[commandBuffer[0] * NUM_COLUMN + commandBuffer[1]], ((uint16_t)commandBuffer[3] << 8 | commandBuffer[2]));
+      }
   }
 }
 
@@ -367,64 +410,99 @@ void ledSet() {
  */
 void ledSetRow() {
   size_t bytesRead;
-  bytesRead = sdReadTimeout(&SD1, commandBuffer,
-                            sizeof(uint16_t) * NUM_COLUMN + 1, 1000);
-  if (bytesRead >= sizeof(uint16_t) * NUM_COLUMN + 1) {
-    if (commandBuffer[0] < NUM_ROW) {
-      memcpy(&ledColors[commandBuffer[0] * NUM_COLUMN], &commandBuffer[1],
-             sizeof(uint16_t) * NUM_COLUMN);
+  bytesRead = sdReadTimeout(&SD1, commandBuffer, sizeof(uint16_t) * NUM_COLUMN + 1, 1000);
+  if(bytesRead >= sizeof(uint16_t) * NUM_COLUMN + 1){
+    if(commandBuffer[0] < NUM_ROW){
+      memcpy(&postProcessledColors[commandBuffer[0] * NUM_COLUMN],&commandBuffer[1], sizeof(uint16_t) * NUM_COLUMN); 
     }
   }
 }
 
-inline uint8_t min(uint8_t a, uint8_t b) { return a <= b ? a : b; }
+inline uint8_t min(uint8_t a, uint8_t b){
+  return a<=b?a:b;
+}
 
 /*
  * Update lighting table as per animation
  */
-static inline void animationCallback() {
-  // If the foreground is set we skip the animation as a way to avoid it
-  // overrides the foreground
-  if (is_foregroundColor_set) {
-    return;
-  }
-
-  if (profiles[currentProfile].animationSpeed[currentSpeed] > 0) {
-    reactiveNeedsUpdate =
-        profiles[currentProfile].callback(ledColors, ledIntensity);
-
-    if (!reactiveNeedsUpdate) {
-      chBSemReset(&ledDisabledSem, true);
+void animationCallback(GPTDriver* _driver) {
+  if (ledTimeoutState) {
+    systime_t currTime = sysTime();
+    if ((currTime - lastKeypress) / 10000 >= LED_TIMEOUT) {
+      ledTimeoutState = false;
     }
-  } else {
-    reactiveNeedsUpdate = false;
+  }
+  
+  gptChangeInterval(_driver, ANIMATION_TIMER_FREQUENCY/profiles[currentProfile].fps);
+  
+  
+  // currentFunction(ledColors);
+  executeProfile();
+}
+
+
+inline uint8_t sPWM(uint8_t cycle, uint8_t currentCount, uint8_t start, ioline_t port){
+  if (start+cycle>0xFF) start = 0xFF - cycle;
+  if (start <= currentCount && currentCount < start+cycle) {
+    palSetLine(port);
+    return 1;
+  }
+  else {
+    palClearLine(port);
+    return 0;
   }
 }
 
-static inline void sPWM(uint8_t cycle, uint8_t currentCount, ioline_t port) {
-  if (cycle > currentCount) {
-    enableRow = true;
+/*
+inline uint8_t sPWM(uint8_t intensity, uint8_t tickNum, ioline_t port) {
+  if (intensity == 0) {
+    palClearLine(port);
+    return 0;
+  }
+
+  uint8_t stepSize = 0xFF / intensity;
+  if (tickNum % stepSize == 0) {
     palSetLine(port);
+    return 1;
   } else {
     palClearLine(port);
+    return 0;
   }
 }
+*/
 
-uint32_t animationLastCallTime = 0;
+void columnCallback(GPTDriver* _driver) {
+  (void)_driver;
+  palClearLine(ledColumns[currentColumn]);
 
-uint8_t rowPWMCount = 0;
+  uint8_t rowHasBeenSet = 0;
+  
+  currentColumn = (currentColumn+1) % NUM_COLUMN;
+  if (columnPWMCount < 255) {
+    for (size_t row = 0; row < NUM_ROW; row++) {
+      const size_t ledIndex = currentColumn + (NUM_COLUMN * row);
+      const led_t keyLED = postProcessledColors[ledIndex];
 
-THD_WORKING_AREA(waThread1, 128);
-__attribute__((noreturn)) THD_FUNCTION(MsgHandlerThd, arg) {
-  (void)arg;
+      rowHasBeenSet += sPWM(keyLED.red, columnPWMCount, 0, ledRows[row << 2]);
+      rowHasBeenSet += sPWM(keyLED.green, columnPWMCount, keyLED.red, ledRows[(row << 2) | 1]);
+      rowHasBeenSet += sPWM(keyLED.blue, columnPWMCount, keyLED.red + keyLED.green, ledRows[(row << 2) | 2]);
+      
+      /*
+      rowHasBeenSet += sPWM(keyLED.red, columnPWMCount, ledRows[row << 2]);
+      rowHasBeenSet += sPWM(keyLED.green, columnPWMCount, ledRows[(row << 2) | 1]);
+      rowHasBeenSet += sPWM(keyLED.blue, columnPWMCount, ledRows[(row << 2) | 2]);
+      */
 
-  while (true) {
-    msg_t msg;
-    msg = sdGet(&SD1);
-    if (msg >= MSG_OK) {
-      executeMsg(msg);
     }
+
+    columnPWMCount++;
   }
+  else {
+    columnPWMCount = 0;
+  }
+
+  if (rowHasBeenSet)
+    palSetLine(ledColumns[currentColumn]);
 }
 
 /*
@@ -441,82 +519,37 @@ int main(void) {
   halInit();
   chSysInit();
 
-  /* profiles[currentProfile].callback(ledColors, ledIntensity); */
-  updateAnimationSpeed();
+  lastKeypress = sysTime();
 
-  // Setup masks to all be 0xFF at the start
-  memset(ledMasks, 0xFF, sizeof(ledMasks));
+  for (int i = 0; i < NUM_ROW * NUM_COLUMN; i++) {
+    postProcessledColors[i].red   = 0;
+    postProcessledColors[i].green = 0;
+    postProcessledColors[i].blue  = 0;
+  }
 
-  chBSemObjectInit(&ledDisabledSem, true);
+  executeProfile();
+/*  */
+
 
   palClearLine(LINE_LED_PWR);
   sdStart(&SD1, &usart1Config);
 
-  chThdCreateStatic(waThread1, sizeof(waThread1), HIGHPRIO, MsgHandlerThd,
-                    NULL);
+  // Setup Column Multiplex Timer
+  gptStart(&GPTD_BFTM0, &bftm0Config);
+  gptStartContinuous(&GPTD_BFTM0, 1);
 
-  while (true) {
+  // Setup Animation Timer
+  gptStart(&GPTD_BFTM1, &lightAnimationConfig);
+  gptStartContinuous(&GPTD_BFTM1, 1);
 
-    // If leds are disabled or enabled and using a reactive profile which does
-    // not need any update, suspend the thread on the semaphore. The semaphore
-    // is flagged up in MsgHandlerThd when leds are enabled or user clicks any
-    // button with the reactive profile enabled.
-    if (!ledEnabled || !reactiveNeedsUpdate) {
-      chBSemWait(&ledDisabledSem);
-    } else {
-      if (enableRow) {
-        palClearLine(ledRows[currentRow]);
-      }
+  chThdCreateStatic(waThread1, sizeof(waThread1), HIGHPRIO, Thread1, NULL);
+  /* This is now the idle thread loop, you may perform here a low priority
+     task but you must never try to sleep or wait in this loop. Note that
+     this tasks runs at the lowest priority level so any instruction added
+     here will be executed after all other tasks have been started.*/
 
-      enableRow = false;
-      currentRow = (currentRow + 1) % (NUM_ROW * 4);
-      if (currentRow % 4 == 3) {
-        currentRow = (currentRow + 1) % (NUM_ROW * 4);
-      }
+  palSetLine(LINE_LED_PWR);
+  disableLeds();
 
-      // A hack to potentially improve the flicker. If we increment by 1 and
-      // the color intensity is small, for example 5, we will have 5 iterations
-      // with LED enabled and 251 iterations with LED disabled. Number 63 is
-      // chosen to randomize the distribution of set iterations and such that
-      // uint8_t with wrap-around would not repeat until exhausting all unique
-      // numbers.
-      rowPWMCount += 63;
-
-      for (size_t col = 0; col < NUM_COLUMN; col++) {
-
-        const size_t ledIndex = col + (NUM_COLUMN * (currentRow >> 2));
-
-        const led_t keyLED = ledColors[ledIndex];
-        uint8_t cl;
-        uint8_t delta;
-        if (currentRow % 4 == 0) {
-          cl = keyLED.red;
-          delta = 0;
-        } else if (currentRow % 4 == 1) {
-          cl = keyLED.green;
-          delta = 85;
-        } else {
-          cl = keyLED.blue;
-          delta = 190;
-        }
-        sPWM(cl, rowPWMCount + delta, ledColumns[col]);
-      }
-
-      if (enableRow) {
-        palSetLine(ledRows[currentRow]);
-        chThdSleep(1);
-      }
-
-      // animation update logic
-      if (animationSkipTicks > 0) {
-        systime_t curTime = chVTGetSystemTimeX();
-        // curTime wraps around when overflows, hence the check for "less"
-        if (curTime < animationLastCallTime ||
-            curTime - animationLastCallTime >= animationSkipTicks) {
-          animationCallback();
-          animationLastCallTime = curTime;
-        }
-      }
-    }
-  }
+  while (true) { }
 }
