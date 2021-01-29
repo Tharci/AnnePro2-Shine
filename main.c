@@ -168,7 +168,7 @@ static uint8_t commandBuffer[64];
 /*
  * Thread 1.
  */
- /*
+ 
 THD_WORKING_AREA(waThread1, 128);
 __attribute__((noreturn)) THD_FUNCTION(Thread1, arg) {
   (void)arg;
@@ -181,7 +181,7 @@ __attribute__((noreturn)) THD_FUNCTION(Thread1, arg) {
     }
   }
 }
-*/
+
 
 /*
  * Execute action based on a message
@@ -476,6 +476,8 @@ void handleMsgCallback(GPTDriver* _driver) {
  * Update lighting table as per animation
  */
 void animationCallback(GPTDriver* _driver) {
+  chSysLock();
+/*
   while(!sdGetWouldBlock(&SD1)){
     msg_t msg;
     msg = sdGet(&SD1);
@@ -483,6 +485,8 @@ void animationCallback(GPTDriver* _driver) {
       executeMsg(msg);
     }
   }
+*/
+  chSysUnlock();
 
   if (ledTimeoutState) {
     systime_t currTime = sysTimeMs();
@@ -525,13 +529,6 @@ void columnCallback(GPTDriver* _driver) {
       rowHasBeenSet += sPWM(keyLED.red, columnPWMCount, 0, ledRows[row << 2]);
       rowHasBeenSet += sPWM(keyLED.green, columnPWMCount, keyLED.red, ledRows[(row << 2) | 1]);
       rowHasBeenSet += sPWM(keyLED.blue, columnPWMCount, keyLED.red + keyLED.green, ledRows[(row << 2) | 2]);
-      
-      /*
-      rowHasBeenSet += sPWM(keyLED.red, columnPWMCount, ledRows[row << 2]);
-      rowHasBeenSet += sPWM(keyLED.green, columnPWMCount, ledRows[(row << 2) | 1]);
-      rowHasBeenSet += sPWM(keyLED.blue, columnPWMCount, ledRows[(row << 2) | 2]);
-      */
-
     }
 
     columnPWMCount++;
@@ -573,14 +570,14 @@ int main(void) {
   sdStart(&SD1, &usart1Config);
 
   // Setup Column Multiplex Timer
-  gptStart(&GPTD_BFTM0, &bftm0Config);
-  gptStartContinuous(&GPTD_BFTM0, 1);
+  //gptStart(&GPTD_BFTM0, &bftm0Config);
+  //gptStartContinuous(&GPTD_BFTM0, 1);
 
   // Setup Animation Timer
   gptStart(&GPTD_BFTM1, &lightAnimationConfig);
   gptStartContinuous(&GPTD_BFTM1, 1);
 
-  // chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO + 10, Thread1, NULL);
+  chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO + 10, Thread1, NULL);
   /* This is now the idle thread loop, you may perform here a low priority
      task but you must never try to sleep or wait in this loop. Note that
      this tasks runs at the lowest priority level so any instruction added
@@ -589,5 +586,7 @@ int main(void) {
   palSetLine(LINE_LED_PWR);
   disableLeds();
 
-  while (true) { }
+  while (true) {
+    columnCallback(0);
+  }
 }
