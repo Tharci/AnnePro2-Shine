@@ -1,5 +1,6 @@
 #pragma once
 
+#include "light_utils.h"
 
 enum LedMsgCode {           // Messages:
     LED_TOGGLE = 1,         // 1 byte: 0 - off, 1 - on
@@ -18,5 +19,21 @@ enum LedMsgCode {           // Messages:
     LED_SET_BRIGHT,         // 1 byte: brightness (0-100)
     LED_GET_BRIGHT,
     LED_GAMING_ON,
-    LED_GAMING_OFF
+    LED_GAMING_OFF,
+    LED_SET_LOCKED
 };
+
+#define LEN(a) (sizeof(a)/sizeof(*a))
+
+typedef struct {
+    int8_t x, y;
+} pos_i;
+
+
+systime_t sysTimeMs(void);
+systime_t sysTimeS(void);
+
+
+unsigned long randInt(void);
+
+

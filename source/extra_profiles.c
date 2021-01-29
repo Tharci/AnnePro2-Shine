@@ -1,31 +1,23 @@
 #include "extra_profiles.h"
 #include "miniFastLED.h"
 #include "stdlib.h"
+#include "ap2_qmk_led.h"
 
 
 
-////// RANDOM UTILS //////
-typedef struct {
-    int8_t x, y;
-} pos_i;
+////// LIGHT UTILS //////
 
+const led_t black   = {0, 0, 0};
+const led_t white   = {200, 255, 255};
+const led_t red     = {255, 0, 0};
+const led_t green   = {0, 255, 0};
+const led_t blue    = {0, 0, 255};
+const led_t pink    = {200, 0, 255};
+const led_t purple  = {75, 0, 255};
+const led_t yellow  = {180, 255, 0};
+const led_t orange  = {255, 140, 0};
+const led_t turkiz  = {0, 255, 255};
 
-
-static unsigned long rand_x=123456789, rand_y=362436069, rand_z=521288629;
-
-unsigned long randInt(void) {
-    unsigned long t;
-    rand_x ^= rand_x << 16;
-    rand_x ^= rand_x >> 5;
-    rand_x ^= rand_x << 1;
-
-   t = rand_x;
-   rand_x = rand_y;
-   rand_y = rand_z;
-   rand_z = t ^ rand_x ^ rand_y;
-
-  return rand_z;
-}
 
 
 void setAllColors(led_t* ledColors, const led_t* color) {
@@ -52,9 +44,6 @@ void multiplyColor(const led_t* color, uint8_t brightness, led_t* color2) {
     color2->blue  = (unsigned char)(color->blue * brightness / 100);
 }
 
-const led_t black = {0, 0, 0};
-const led_t white = {200, 255, 255};
-
 
 
 ////// ANIMATED RAIN //////
@@ -62,10 +51,8 @@ const led_t white = {200, 255, 255};
 const led_t rainBg = {0, 0, 0};
 const led_t rainColor = {10, 10, 255};
 
-#define sysTime chVTGetSystemTime
-
 #define raindropsBufferSize 40
-// const unsigned char raindropsBufferSize = 40;
+
 static uint8_t raindropCnt = 0;
 static pos_i raindrops[raindropsBufferSize];
 
@@ -76,7 +63,7 @@ systime_t rainSpeedMs = 55;
 systime_t lastMoved = 0;
 
 void anim_rain(led_t* ledColors) {
-    if (sysTime() - lastMoved > rainSpeedMs * 10) {
+    if (sysTimeMs() - lastMoved > rainSpeedMs) {
         for (size_t i = 0; i < raindropCnt; i++) {
             raindrops[i].y++;
         }
@@ -90,12 +77,15 @@ void anim_rain(led_t* ledColors) {
                     pos_i currPos = { raindrops[i].x, y };
                     led_t multipliedColor;
                     multiplyColor(&rainColor, brightness, &multipliedColor);
-                    setColor(ledColors, &currPos, &multipliedColor);
+
+                    if (currPos.y >= 0 && currPos.y < NUM_ROW) {
+                        ledColors[currPos.y * NUM_COLUMN + currPos.x] = multipliedColor;
+                    }
                 }
             }
         }
 
-        lastMoved = sysTime();
+        lastMoved = sysTimeMs();
     }
 
 
@@ -110,7 +100,7 @@ void anim_rain(led_t* ledColors) {
     raindropCnt -= deleteRainIdx;
     
 
-    if (nextRainSpawn <= sysTime()) {
+    if (nextRainSpawn <= sysTimeMs()) {
         if (raindropCnt < raindropsBufferSize) {
             raindrops[raindropCnt].x = randInt() % NUM_COLUMN;
             raindrops[raindropCnt].y = 0;
@@ -118,7 +108,7 @@ void anim_rain(led_t* ledColors) {
             raindropCnt++;
         }
 
-        nextRainSpawn = sysTime() + randInt() % 1000 + 500;
+        nextRainSpawn = sysTimeMs() + randInt() % 100 + 50;
     }
 }
 
@@ -146,18 +136,18 @@ void anim_thunder(led_t* ledColors) {
     anim_rain(ledColors);
 
     // Add lightning
-    if (sysTime() >= nextLightnSpawn) {
+    if (sysTimeMs() >= nextLightnSpawn) {
         lightn.col = randInt() % NUM_COLUMN;
         lightn.maxFlashes = randInt() % 6 + 1;
         lightn.currFlash = 0;
         lightn.state = 0;
-        lightn.timeThreshold = sysTime();
+        lightn.timeThreshold = sysTimeMs();
         
-        nextLightnSpawn = sysTime() + randInt() % 100000 + 30000;
+        nextLightnSpawn = sysTimeMs() + randInt() % 9000 + 2000;
     }
 
 
-    lightn.intensity -= 7;
+    lightn.intensity -= 5;
     if (lightn.intensity < 0) {
         lightn.intensity = 0;
     }
@@ -168,16 +158,16 @@ void anim_thunder(led_t* ledColors) {
     }
 
 
-    if (lightn.currFlash < lightn.maxFlashes && lightn.timeThreshold <= sysTime()) {
+    if (lightn.currFlash < lightn.maxFlashes && lightn.timeThreshold <= sysTimeMs()) {
         lightn.currFlash++;
         lightn.state = !lightn.state;
         lightn.intensity = randInt() % 30 + 71;
         
         if (lightn.state) {
-            lightn.timeThreshold = sysTime() + randInt() % 7000 + 1500;
+            lightn.timeThreshold = sysTimeMs() + randInt() % 700 + 150;
         }
         else {
-            lightn.timeThreshold = sysTime() + randInt() % 200 + 50;
+            lightn.timeThreshold = sysTimeMs() + randInt() % 40 + 30;
         }
     }
 
@@ -229,13 +219,25 @@ void anim_breathing(led_t* ledColors) {
     keyTapsCnt -= deleteTapIdx;
 }
 
+
+led_t breathing_colors[] = {
+    red,
+    green,
+    blue,
+    pink,
+    purple,
+    yellow,
+    orange,
+    turkiz,
+    white
+};
+
 void pressed_breathing(uint8_t x, uint8_t y, led_t* ledColors) {
     if(keyTapsCnt < keyTapsBufferSize) {
         keyTaps[keyTapsCnt].pos.x = x;
         keyTaps[keyTapsCnt].pos.y = y;
-        keyTaps[keyTapsCnt].color.red = randInt()%256;
-        keyTaps[keyTapsCnt].color.green = randInt()%256;
-        keyTaps[keyTapsCnt].color.blue = randInt()%256;
+        keyTaps[keyTapsCnt].color = 
+            breathing_colors[randInt() % LEN(breathing_colors)];
         keyTaps[keyTapsCnt].brightness = 100;
 
         keyTapsCnt++;
@@ -296,6 +298,37 @@ void anim_snowing(led_t* ledColors) {
         snowflakeSpawnTimer = randInt() % 4 + 6;
     }
 }
+
+
+////// LOCKED ////// 
+
+led_t locked_color = {255, 20, 20};
+
+uint8_t locked_intensity = 0;
+bool locked_anim_dir = 1;
+
+void anim_locked(led_t* ledColors) {
+    if (locked_anim_dir) {
+        locked_intensity++;
+
+        if (locked_intensity >= 100) {
+            locked_anim_dir = 0;
+        }
+    }
+    else {
+        locked_intensity--;
+
+        if (locked_intensity <= 0) {
+            locked_anim_dir = 1;
+        }
+    }
+
+    led_t multipliedColor;
+    multiplyColor(&locked_color, locked_intensity, &multipliedColor);
+    
+    setAllColors(ledColors, &multipliedColor);
+}
+
 
 
 
