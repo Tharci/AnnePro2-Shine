@@ -109,26 +109,27 @@ ioline_t ledRows[NUM_ROW * 4] = {
 
 typedef void (*anim_tick)( led_t* );
 typedef void (*anim_keypress)( uint8_t col, uint8_t row, led_t* keyColors );
-
+typedef void (*anim_init)();
 
 typedef struct {
-  anim_tick tick;
-  anim_keypress keypress;
   uint8_t fps;
+  anim_tick tick;
+  anim_init init;
+  anim_keypress keypress;
 } profile;
 
 static profile getCurrentProfile(void);
 
 profile profiles[] = {
-  { anim_rain, 0, 30 },
-  { anim_thunder, 0, 30 },
-  { animatedRainbowFlow, 0, 30 },
-  { anim_breathing, pressed_breathing, 30 },
-  { anim_snowing, 0, 30 },
-  { anim_stars, 0, 10 }
+  { 30, anim_rain, rain_init, 0 },
+  { 30, anim_thunder, rain_init, 0 },
+  { 30, animatedRainbowFlow, 0, 0 },
+  { 30, anim_breathing, breathing_init, pressed_breathing },
+  { 30, anim_snowing, snowing_init, 0 },
+  { 6, anim_stars, 0, 0 }
 };
 
-static profile lockedProfile = { anim_locked, 0, 60 };
+static profile lockedProfile = { 60, anim_locked, locked_init, 0 };
 
 
 static uint8_t currentProfile = 0;
@@ -356,6 +357,9 @@ void keyPressedCallback() {
 
 void switchProfile(uint8_t profile){
   currentProfile = profile % amountOfProfiles;
+
+  anim_init init = profiles[currentProfile].init;
+  if (init) init();
 }
 
 void nextProfile() {
@@ -549,12 +553,10 @@ int main(void) {
 
   lastKeypress = sysTimeMs();
 
-  for (int i = 0; i < NUM_ROW * NUM_COLUMN; i++) {
-    ledColors[i].red   = 0;
-    ledColors[i].green = 0;
-    ledColors[i].blue  = 0;
-  }
+  memset(ledColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
 
+  anim_init init = profiles[currentProfile].init;
+  if (init) init();
   executeProfile();
 
 
@@ -572,7 +574,6 @@ int main(void) {
      here will be executed after all other tasks have been started.*/
 
   palSetLine(LINE_LED_PWR);
-  disableLeds();
 
   while (true) {
     columnCallback();

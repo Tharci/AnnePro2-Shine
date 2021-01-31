@@ -59,7 +59,7 @@ static pos_i raindrops[raindropsBufferSize];
 systime_t nextRainSpawn = 0;
 static const uint8_t trailLength = 6;
 
-systime_t rainSpeedMs = 55;
+const systime_t rainSpeedMs = 55;
 systime_t lastMoved = 0;
 
 void anim_rain(led_t* ledColors) {
@@ -112,6 +112,12 @@ void anim_rain(led_t* ledColors) {
     }
 }
 
+
+void rain_init() {
+    raindropCnt = 0;
+    nextRainSpawn = 0;
+    lastMoved = 0;
+}
 
 
 ////// THUNDER //////
@@ -219,6 +225,10 @@ void anim_breathing(led_t* ledColors) {
     keyTapsCnt -= deleteTapIdx;
 }
 
+void breathing_init() {
+    keyTapsCnt = 0;
+}
+
 
 led_t breathing_colors[] = {
     red,
@@ -299,6 +309,10 @@ void anim_snowing(led_t* ledColors) {
     }
 }
 
+void snowing_init() {
+    snowflakeCnt = 0;
+}
+
 
 ////// LOCKED ////// 
 
@@ -327,6 +341,11 @@ void anim_locked(led_t* ledColors) {
     multiplyColor(&locked_color, lockedIntensity, &multipliedColor);
     
     setAllColors(ledColors, &multipliedColor);
+}
+
+void locked_init() {
+    lockedIntensity = 0;
+    lockedAnimDir = 1;
 }
 
 
