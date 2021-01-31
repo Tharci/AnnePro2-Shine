@@ -304,30 +304,66 @@ void anim_snowing(led_t* ledColors) {
 
 led_t locked_color = {255, 20, 20};
 
-uint8_t locked_intensity = 0;
-bool locked_anim_dir = 1;
+uint8_t lockedIntensity = 0;
+bool lockedAnimDir = 1;
 
 void anim_locked(led_t* ledColors) {
-    if (locked_anim_dir) {
-        locked_intensity++;
+    if (lockedAnimDir) {
+        lockedIntensity++;
 
-        if (locked_intensity >= 100) {
-            locked_anim_dir = 0;
+        if (lockedIntensity >= 100) {
+            lockedAnimDir = 0;
         }
     }
     else {
-        locked_intensity--;
+        lockedIntensity--;
 
-        if (locked_intensity <= 0) {
-            locked_anim_dir = 1;
+        if (lockedIntensity <= 0) {
+            lockedAnimDir = 1;
         }
     }
 
     led_t multipliedColor;
-    multiplyColor(&locked_color, locked_intensity, &multipliedColor);
+    multiplyColor(&locked_color, lockedIntensity, &multipliedColor);
     
     setAllColors(ledColors, &multipliedColor);
 }
+
+
+////// STARS //////
+
+typedef struct {
+    pos_i pos;
+    uint8_t intensity;
+} star;
+
+
+static const star stars[] = {
+    { {1, 0}, 40 },
+    { {1, 2}, 100 },
+    { {5, 1}, 30 },
+    { {11, 3}, 60 },
+    { {6, 4}, 100 },
+    { {13, 1}, 85 },
+    { {8, 0}, 15 },
+    { {8, 2}, 50 },
+    { {3, 3}, 10 },
+};
+
+void anim_stars(led_t* ledColors) {
+    setAllColors(ledColors, &black);
+
+    for (uint8_t i = 0; i < LEN(stars); i++) {
+        uint8_t intensityMod = randInt() % 60 + 70;
+        int intensity = stars[i].intensity * intensityMod / 100;
+        if (intensity > 100) 
+            intensity = 100;
+
+        multiplyColor(&white, intensity, &ledColors[stars[i].pos.y * NUM_COLUMN + stars[i].pos.x]);
+    }
+}
+
+
 
 
 

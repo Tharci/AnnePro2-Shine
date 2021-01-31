@@ -25,7 +25,7 @@
 #include "miniFastLED.h"
 
 
-static void columnCallback(GPTDriver* driver);
+static void columnCallback(void);
 static void animationCallback(GPTDriver* driver);
 static void executeMsg(msg_t msg);
 static void switchProfile(uint8_t profile);
@@ -42,6 +42,8 @@ static void bltConnecting(void);
 static void ledPostProcess(void);
 static void nextProfile(void);
 static void prevProfile(void);
+
+static void goIntoIAP(void);
 
 static bool ledState = false;
 static bool ledTimeoutState = true;
@@ -122,7 +124,8 @@ profile profiles[] = {
   { anim_thunder, 0, 30 },
   { animatedRainbowFlow, 0, 30 },
   { anim_breathing, pressed_breathing, 30 },
-  { anim_snowing, 0, 30 }
+  { anim_snowing, 0, 30 },
+  { anim_stars, 0, 10 }
 };
 
 static profile lockedProfile = { anim_locked, 0, 60 };
@@ -147,12 +150,6 @@ static uint8_t pressedKeyCnt = 0;
 
 static bool isLocked = false;
 
-// BFTM0 Configuration, this runs at 15 * REFRESH_FREQUENCY Hz
-static const GPTConfig bftm0Config = {
-  .frequency = NUM_COLUMN * REFRESH_FREQUENCY * 2 * 16,
-  .callback = columnCallback
-};
-
 // Lighting animation refresh timer
 static const GPTConfig lightAnimationConfig = {
   .frequency = ANIMATION_TIMER_FREQUENCY,
@@ -168,7 +165,6 @@ static uint8_t commandBuffer[64];
 /*
  * Thread 1.
  */
- 
 THD_WORKING_AREA(waThread1, 128);
 __attribute__((noreturn)) THD_FUNCTION(Thread1, arg) {
   (void)arg;
@@ -180,6 +176,12 @@ __attribute__((noreturn)) THD_FUNCTION(Thread1, arg) {
       executeMsg(msg);
     }
   }
+}
+
+static void goIntoIAP() {
+    *((uint32_t*)0x20001ffc) = 0x0000fab2;
+    __disable_irq();
+    NVIC_SystemReset();
 }
 
 
@@ -263,6 +265,9 @@ void executeMsg(msg_t msg){
     case LED_SET_LOCKED:
       setLocked();
       break;
+
+    case LED_IAP_MODE:
+      goIntoIAP();
 
     default:
       break;
@@ -476,18 +481,6 @@ void handleMsgCallback(GPTDriver* _driver) {
  * Update lighting table as per animation
  */
 void animationCallback(GPTDriver* _driver) {
-  chSysLock();
-/*
-  while(!sdGetWouldBlock(&SD1)){
-    msg_t msg;
-    msg = sdGet(&SD1);
-    if(msg >= MSG_OK){
-      executeMsg(msg);
-    }
-  }
-*/
-  chSysUnlock();
-
   if (ledTimeoutState) {
     systime_t currTime = sysTimeMs();
     if (currTime - lastKeypress >= LED_TIMEOUT * 1000) {
@@ -514,8 +507,7 @@ inline uint8_t sPWM(uint8_t cycle, uint8_t currentCount, uint8_t start, ioline_t
 }
 
 
-void columnCallback(GPTDriver* _driver) {
-  (void)_driver;
+void columnCallback() {
   palClearLine(ledColumns[currentColumn]);
 
   uint8_t rowHasBeenSet = 0;
@@ -569,10 +561,6 @@ int main(void) {
   palClearLine(LINE_LED_PWR);
   sdStart(&SD1, &usart1Config);
 
-  // Setup Column Multiplex Timer
-  //gptStart(&GPTD_BFTM0, &bftm0Config);
-  //gptStartContinuous(&GPTD_BFTM0, 1);
-
   // Setup Animation Timer
   gptStart(&GPTD_BFTM1, &lightAnimationConfig);
   gptStartContinuous(&GPTD_BFTM1, 1);
@@ -587,6 +575,6 @@ int main(void) {
   disableLeds();
 
   while (true) {
-    columnCallback(0);
+    columnCallback();
   }
 }

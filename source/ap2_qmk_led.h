@@ -20,7 +20,8 @@ enum LedMsgCode {           // Messages:
     LED_GET_BRIGHT,
     LED_GAMING_ON,
     LED_GAMING_OFF,
-    LED_SET_LOCKED
+    LED_SET_LOCKED,
+    LED_IAP_MODE,
 };
 
 #define LEN(a) (sizeof(a)/sizeof(*a))
