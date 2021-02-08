@@ -7,49 +7,55 @@
 
 ////// LIGHT UTILS //////
 
-const led_t black   = {0, 0, 0};
-const led_t white   = {200, 255, 255};
-const led_t red     = {255, 0, 0};
-const led_t green   = {0, 255, 0};
-const led_t blue    = {0, 0, 255};
-const led_t pink    = {200, 0, 255};
-const led_t purple  = {75, 0, 255};
-const led_t yellow  = {180, 255, 0};
-const led_t orange  = {255, 140, 0};
-const led_t turkiz  = {0, 255, 255};
+static const led_t black   = {0, 0, 0};
+static const led_t white   = {200, 255, 255};
+static const led_t red     = {255, 25, 0};
+static const led_t green   = {0, 255, 30};
+static const led_t blue    = {0, 0, 255};
+static const led_t pink    = {200, 0, 255};
+static const led_t purple  = {50, 0, 255};
+static const led_t yellow  = {180, 255, 0};
+static const led_t orange  = {255, 140, 0};
+static const led_t turkiz  = {0, 255, 255};
 
 
 
-void setAllColors(led_t* ledColors, const led_t* color) {
+static void setAllColors(led_t* ledColors, const led_t* color) {
     for (int i = 0; i < NUM_ROW * NUM_COLUMN; i++) {
         ledColors[i] = *color;
     }
 }
 
-bool legitPosition(const pos_i* pos) {
+static bool legitPosition(const pos_i* pos) {
     return
         pos->x >= 0 && pos->x < NUM_COLUMN &&
         pos->y >= 0 && pos->y < NUM_ROW;
 }
 
-void setColor(led_t* ledColors, const pos_i* pos, const led_t* color) {
+static void setColor(led_t* ledColors, const pos_i* pos, const led_t* color) {
     if (legitPosition(pos))
         ledColors[pos->y * NUM_COLUMN + pos->x] = *color;
 }
 
 
-void multiplyColor(const led_t* color, uint8_t brightness, led_t* color2) {
-    color2->red   = (unsigned char)(color->red * brightness / 100);
-    color2->green = (unsigned char)(color->green * brightness / 100);
-    color2->blue  = (unsigned char)(color->blue * brightness / 100);
+static void multiplyColor(const led_t* color, uint8_t brightness, led_t* color2) {
+    color2->red   = (((int)color->red) * brightness / 100);
+    color2->green = (((int)color->green) * brightness / 100);
+    color2->blue  = (((int)color->blue) * brightness / 100);
+}
+
+
+uint8_t reactiveFps = 30;
+
+uint8_t getReactiveFps() {
+    return reactiveFps;
 }
 
 
 
 ////// ANIMATED RAIN //////
 
-const led_t rainBg = {0, 0, 0};
-const led_t rainColor = {10, 10, 255};
+const led_t rainColor = {30, 30, 255};
 
 #define raindropsBufferSize 40
 
@@ -59,8 +65,16 @@ static pos_i raindrops[raindropsBufferSize];
 systime_t nextRainSpawn = 0;
 static const uint8_t trailLength = 6;
 
+uint8_t rainIntensity = 50;
 const systime_t rainSpeedMs = 55;
 systime_t lastMoved = 0;
+
+void rain_init(led_t* ledColors) {
+    raindropCnt = 0;
+    nextRainSpawn = 0;
+    lastMoved = 0;
+    rainIntensity = 50;
+}
 
 void anim_rain(led_t* ledColors) {
     if (sysTimeMs() - lastMoved > rainSpeedMs) {
@@ -68,7 +82,7 @@ void anim_rain(led_t* ledColors) {
             raindrops[i].y++;
         }
         
-        setAllColors(ledColors, &rainBg);
+        setAllColors(ledColors, &black);
         for (uint8_t i = 0; i < raindropCnt; i++) {
             for (uint8_t y = 0; y < NUM_ROW && y <= raindrops[i].y; y++) {
                 if (raindrops[i].y - y < trailLength + 1) {
@@ -108,15 +122,9 @@ void anim_rain(led_t* ledColors) {
             raindropCnt++;
         }
 
-        nextRainSpawn = sysTimeMs() + randInt() % 100 + 50;
+        //nextRainSpawn = sysTimeMs() + randInt() % 100 + 80;
+        nextRainSpawn = sysTimeMs() + randInt() % ((105-rainIntensity) * 3) + 70;
     }
-}
-
-
-void rain_init() {
-    raindropCnt = 0;
-    nextRainSpawn = 0;
-    lastMoved = 0;
 }
 
 
@@ -136,8 +144,14 @@ lightning lightn;
 
 systime_t nextLightnSpawn = 0;
 
+uint8_t stormIntensity = 50;
 
-void anim_thunder(led_t* ledColors) {
+void storm_init(led_t* ledColors) {
+    rain_init(ledColors);
+    stormIntensity = 50;
+}
+
+void anim_storm(led_t* ledColors) {
     // Call rain animation
     anim_rain(ledColors);
 
@@ -149,7 +163,8 @@ void anim_thunder(led_t* ledColors) {
         lightn.state = 0;
         lightn.timeThreshold = sysTimeMs();
         
-        nextLightnSpawn = sysTimeMs() + randInt() % 9000 + 2000;
+        // nextLightnSpawn = sysTimeMs() + randInt() % 9000 + 2000;
+        nextLightnSpawn = sysTimeMs() + randInt() % ((110-stormIntensity) * 180) + 1000;
     }
 
 
@@ -206,9 +221,8 @@ const uint8_t fadeSpeed = 8;
 void anim_breathing(led_t* ledColors) {
     setAllColors(ledColors, &black);
     for (size_t i = 0; i < keyTapsCnt; i++) {
-        led_t multipliedColor;
-        multiplyColor(&keyTaps[i].color, keyTaps[i].brightness, &multipliedColor);
-        setColor(ledColors, &keyTaps[i].pos, &multipliedColor);
+        multiplyColor(&keyTaps[i].color, keyTaps[i].brightness, 
+            &ledColors[keyTaps[i].pos.y * NUM_COLUMN + keyTaps[i].pos.x]);
 
         keyTaps[i].brightness -= fadeSpeed;
     }
@@ -225,7 +239,7 @@ void anim_breathing(led_t* ledColors) {
     keyTapsCnt -= deleteTapIdx;
 }
 
-void breathing_init() {
+void breathing_init(led_t* ledColors) {
     keyTapsCnt = 0;
 }
 
@@ -238,8 +252,7 @@ led_t breathing_colors[] = {
     purple,
     yellow,
     orange,
-    turkiz,
-    white
+    turkiz
 };
 
 void pressed_breathing(uint8_t x, uint8_t y, led_t* ledColors) {
@@ -269,6 +282,7 @@ snowflake snowflakes[snowflakesBufferSize];
 uint8_t snowflakeCnt = 0;
 
 int snowflakeSpawnTimer = 0;
+uint8_t snowIntensity = 50;
 
 void anim_snowing(led_t* ledColors) {
     setAllColors(ledColors, &black);
@@ -305,12 +319,14 @@ void anim_snowing(led_t* ledColors) {
             snowflakeCnt++;
         }
 
-        snowflakeSpawnTimer = randInt() % 4 + 6;
+        // snowflakeSpawnTimer = randInt() % 4 + 6;
+        snowflakeSpawnTimer = randInt() % ((110-snowIntensity) / 10) + 3;
     }
 }
 
-void snowing_init() {
+void snowing_init(led_t* ledColors) {
     snowflakeCnt = 0;
+    snowIntensity = 50;
 }
 
 
@@ -323,7 +339,7 @@ bool lockedAnimDir = 1;
 
 void anim_locked(led_t* ledColors) {
     if (lockedAnimDir) {
-        lockedIntensity++;
+        lockedIntensity += 2;
 
         if (lockedIntensity >= 100) {
             lockedAnimDir = 0;
@@ -343,7 +359,7 @@ void anim_locked(led_t* ledColors) {
     setAllColors(ledColors, &multipliedColor);
 }
 
-void locked_init() {
+void locked_init(led_t* ledColors) {
     lockedIntensity = 0;
     lockedAnimDir = 1;
 }
@@ -382,6 +398,130 @@ void anim_stars(led_t* ledColors) {
     }
 }
 
+
+#include "math.h"
+
+////// SUNNY //////
+
+static uint8_t angles[] = {
+     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    90, 40, 37, 34, 31, 28, 25, 22, 19, 17, 15, 13, 11, 10,
+    90, 50, 47, 44, 41, 38, 35, 32, 29, 27, 25, 23, 21, 19,
+    90, 67, 64, 61, 58, 55, 52, 49, 46, 43, 40, 37, 34, 30,
+    90, 77, 74, 71, 68, 65, 62, 59, 56, 53, 50, 47, 44, 40,
+};
+
+
+static uint16_t sunRotation = 0;
+static pos_i sunPos = {0, 0};
+
+static led_t sunny_color = yellow;
+
+
+void anim_sunny(led_t* ledColors) {
+    for (uint8_t y = 0; y < NUM_ROW; y++) {
+        for (uint8_t x = 0; x < NUM_COLUMN; x++) {
+            uint8_t x_rel = abs(x - sunPos.x);
+            uint8_t y_rel = abs(y - sunPos.y);
+            int angle;
+            // if (x_rel != 0)
+            //     angle = ((int)atan(y_rel,x_rel) + sunRotation) % 360;
+            // else
+                // angle = (270 + sunRotation) % 360;
+
+            angle = (angles[y * NUM_COLUMN + x] + sunRotation) % 360;
+
+            uint8_t brightness = (abs((angle % 72) - 36)) * ((int)100) / 36;
+            if (brightness > 100)
+                brightness = 100;
+
+            multiplyColor(&sunny_color, brightness, &ledColors[y * NUM_COLUMN + x]);
+        }
+    }
+
+    ledColors[0] = sunny_color;
+    
+    sunRotation = (sunRotation + 1) % 360;
+}
+
+void sunny_init(led_t* ledColors) {
+    led_t sunny_color = yellow;
+}
+
+
+////// LIVE WEATHER //////
+
+static bool weatherUpToDate = false;
+static WeatherData weatherData;
+static void(*weatherAnimFn)(led_t*) = 0;
+
+void setWeatherData(WeatherData* data) {
+    weatherUpToDate = true;
+    weatherData = *data;
+
+    if (weatherData.snowIntensity > 0) {
+        weatherAnimFn = anim_snowing;
+        reactiveFps = 30;
+
+        snowing_init(0);
+        
+        int snowInt = weatherData.stormIntensity * 3;
+        if (snowInt > 100)
+            snowInt = 100;
+        snowIntensity = snowInt;
+
+        int rainInt = weatherData.rainIntensity * 3;
+        if (rainInt > 100)
+            rainInt = 100;
+        rainIntensity = rainInt;
+    }
+    else if (weatherData.stormIntensity > 0) {
+        weatherAnimFn = anim_storm;
+        reactiveFps = 30;
+
+        storm_init(0);
+        stormIntensity = weatherData.stormIntensity;
+    }
+    else if (weatherData.rainIntensity > 0) {
+        weatherAnimFn = anim_rain;
+        reactiveFps = 30;
+
+        rain_init(0);
+        int rainInt = weatherData.rainIntensity * 3;
+        if (rainInt > 100)
+            rainInt = 100;
+        rainIntensity = rainInt;
+    }
+    else if (!(weatherData.time.hour > 6 && weatherData.time.hour < 19)) {
+        weatherAnimFn = anim_stars;
+        reactiveFps = 6;
+    }
+    else if (weatherData.cloudDensity >= 50) {
+        weatherAnimFn = anim_sunny;
+        reactiveFps = 15;
+
+        sunny_init(0);
+
+        const led_t cloudColor = {100, 100, 100};
+        sunny_color = cloudColor;
+    }
+    else {
+        weatherAnimFn = anim_sunny;
+        reactiveFps = 30;
+
+        sunny_init(0);
+    }
+}
+
+void anim_liveWeather(led_t* ledColors) {
+    if (weatherUpToDate && weatherAnimFn) {
+        weatherAnimFn(ledColors);
+    }
+    else {
+        setAllColors(ledColors, &black);
+        ledColors[0] = red;
+    }
+}
 
 
 

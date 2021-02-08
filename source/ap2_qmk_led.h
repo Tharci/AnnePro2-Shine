@@ -22,6 +22,8 @@ enum LedMsgCode {           // Messages:
     LED_GAMING_OFF,
     LED_SET_LOCKED,
     LED_IAP_MODE,
+    LED_POWER_PLAN,         // 1 byte; 0 - normal, 1 - power saving
+    LED_UPDATE_WEATHER,
 };
 
 #define LEN(a) (sizeof(a)/sizeof(*a))
