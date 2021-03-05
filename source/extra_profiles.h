@@ -27,6 +27,9 @@ void anim_stars(led_t* ledColors);
 void sunny_init(led_t* ledColors);
 void anim_sunny(led_t* ledColors);
 
+void cloudy_init(led_t* ledColors);
+void anim_cloudy(led_t* ledColors);
+
 typedef struct {
     uint8_t hour;
     uint8_t minute;

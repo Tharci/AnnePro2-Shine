@@ -2,11 +2,11 @@
 
 
 systime_t sysTimeMs() {
-  return chVTGetSystemTime() / 10;
+  return chVTGetSystemTime() / 10 + 1000000;
 }
 
 systime_t sysTimeS() {
-    return chVTGetSystemTime() / 10000;
+    return chVTGetSystemTime() / 10000 + 1000;
 }
 
 

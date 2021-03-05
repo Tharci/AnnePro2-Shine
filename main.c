@@ -60,7 +60,7 @@ static systime_t bltLedLastSwitched = 0;
 static int brightness = 100;
 static bool gamingMode = false;
 
-#define LED_TIMEOUT_BATTERY 180
+#define LED_TIMEOUT_BATTERY 1200// 180
 #define LED_TIMEOUT_USB 1200
 static systime_t lastKeypress;
 
@@ -133,7 +133,7 @@ static Profile profiles[] = {
   { 30, anim_snowing, snowing_init, 0 },
   { 6,  anim_stars, 0, 0 },
   { 30, anim_sunny, sunny_init, 0 },
-  { 0,  anim_liveWeather, 0, 0 },
+  { 0,  anim_liveWeather, liveWeather_init, 0 },
 };
 
 static Profile lockedProfile = { 30, anim_locked, locked_init, 0 };
@@ -345,8 +345,11 @@ static void setWeather(void) {
   size_t bytesRead;
   bytesRead = sdReadTimeout(&SD1, commandBuffer, sizeof(commandBuffer), 5000);
 
-  if(bytesRead == sizeof(WeatherData)) {
-    setWeatherData((WeatherData*) commandBuffer);
+  setWeatherData((WeatherData*) commandBuffer);
+
+  Profile* currProfile = getCurrentProfile();
+  if (currProfile->tick == anim_liveWeather) {
+    currProfile->init(ledColors);
   }
 }
 
@@ -463,6 +466,7 @@ void ledPostProcess() {
 
 
 void executeInit() {
+  memset(ledColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
   anim_init init = getCurrentProfile()->init;
   if (init) {
     init(ledColors);

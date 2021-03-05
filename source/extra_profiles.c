@@ -122,8 +122,8 @@ void anim_rain(led_t* ledColors) {
             raindropCnt++;
         }
 
-        //nextRainSpawn = sysTimeMs() + randInt() % 100 + 80;
-        nextRainSpawn = sysTimeMs() + randInt() % ((105-rainIntensity) * 3) + 70;
+        // range of the intensity multiplier is : 50% - 300%
+        nextRainSpawn = sysTimeMs() + (randInt() % 50 + 30) * (120 - rainIntensity) * 5 / 200;
     }
 }
 
@@ -162,9 +162,9 @@ void anim_storm(led_t* ledColors) {
         lightn.currFlash = 0;
         lightn.state = 0;
         lightn.timeThreshold = sysTimeMs();
-        
-        // nextLightnSpawn = sysTimeMs() + randInt() % 9000 + 2000;
-        nextLightnSpawn = sysTimeMs() + randInt() % ((110-stormIntensity) * 180) + 1000;
+
+        // range of the intensity multiplier is : 50% - 250%
+        nextLightnSpawn = sysTimeMs() + (randInt() % 9000 + 2000) * (125 - stormIntensity) / 50;
     }
 
 
@@ -320,7 +320,7 @@ void anim_snowing(led_t* ledColors) {
         }
 
         // snowflakeSpawnTimer = randInt() % 4 + 6;
-        snowflakeSpawnTimer = randInt() % ((110-snowIntensity) / 10) + 3;
+        snowflakeSpawnTimer = randInt() % ((105-snowIntensity) / 3) + 3;
     }
 }
 
@@ -414,112 +414,148 @@ static uint8_t angles[] = {
 
 static uint16_t sunRotation = 0;
 static pos_i sunPos = {0, 0};
-
-static led_t sunny_color = yellow;
+static uint8_t sunIntensity = 100;
 
 
 void anim_sunny(led_t* ledColors) {
-    for (uint8_t y = 0; y < NUM_ROW; y++) {
-        for (uint8_t x = 0; x < NUM_COLUMN; x++) {
-            uint8_t x_rel = abs(x - sunPos.x);
-            uint8_t y_rel = abs(y - sunPos.y);
-            int angle;
-            // if (x_rel != 0)
-            //     angle = ((int)atan(y_rel,x_rel) + sunRotation) % 360;
-            // else
-                // angle = (270 + sunRotation) % 360;
+    if (sunIntensity) {
+        for (uint8_t y = 0; y < NUM_ROW; y++) {
+            for (uint8_t x = 0; x < NUM_COLUMN; x++) {
+                uint8_t x_rel = abs(x - sunPos.x);
+                uint8_t y_rel = abs(y - sunPos.y);
+                int angle;
+                // if (x_rel != 0)
+                //     angle = ((int)atan(y_rel,x_rel) + sunRotation) % 360;
+                // else
+                    // angle = (270 + sunRotation) % 360;
 
-            angle = (angles[y * NUM_COLUMN + x] + sunRotation) % 360;
+                angle = (angles[y * NUM_COLUMN + x] + sunRotation) % 360;
 
-            uint8_t brightness = (abs((angle % 72) - 36)) * ((int)100) / 36;
-            if (brightness > 100)
-                brightness = 100;
+                uint8_t brightness = (abs((angle % 72) - 36)) * ((int)100) / 36;
+                if (brightness > 100)
+                    brightness = 100;
 
-            multiplyColor(&sunny_color, brightness, &ledColors[y * NUM_COLUMN + x]);
+                brightness = (int)brightness * sunIntensity / 100;
+
+                multiplyColor(&yellow, brightness, &ledColors[y * NUM_COLUMN + x]);
+            }
         }
-    }
 
-    ledColors[0] = sunny_color;
-    
-    sunRotation = (sunRotation + 1) % 360;
+        ledColors[0] = yellow;
+        
+        sunRotation = (sunRotation + 1) % 360;
+    }
 }
 
 void sunny_init(led_t* ledColors) {
-    led_t sunny_color = yellow;
+    sunIntensity = 100;
+}
+
+
+////// CLOUDY ///////
+
+static uint8_t sin_lookup[360] = {
+    0, 1, 3, 5, 6, 8, 10, 12, 13, 15, 17, 19, 20, 22, 24, 25, 27, 29, 30, 32, 34, 35, 37, 39, 40, 42, 43, 45, 46, 48, 49, 51, 52, 54, 55, 57, 58, 60, 61, 62, 64, 65, 66, 68, 69, 70, 71, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 89, 90, 91, 92, 92, 93, 93, 94, 95, 95, 96, 96, 97, 97, 97, 98, 98, 98, 99, 99, 99, 99, 99, 99, 99, 99, 100, 99, 99, 99, 99, 99, 99, 99, 99, 98, 98, 98, 97, 97, 97, 96, 96, 95, 95, 94, 93, 93, 92, 92, 91, 90, 89, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 71, 70, 69, 68, 66, 65, 64, 62, 61, 60, 58, 57, 55, 54, 52, 51, 49, 48, 46, 45, 43, 42, 40, 39, 37, 35, 34, 32, 30, 29, 27, 25, 24, 22, 20, 19, 17, 15, 13, 12, 10, 8, 6, 5, 3, 1
+};
+
+
+static uint8_t cloudDensity = 100;
+static uint16_t cloudPeriod = 0;
+static led_t cloudColor = {130, 200, 200};
+
+void cloudy_init(led_t* ledColors) {
+    sunny_init(ledColors);
+
+    cloudDensity = 100;
+    sunIntensity = 0;    
+}
+
+void anim_cloudy(led_t* ledColors) {
+    if (sunIntensity) {
+        anim_sunny(ledColors);
+    }
+
+    if (cloudDensity) {
+        for (uint8_t x = 0; x < NUM_COLUMN; x++) {
+            uint8_t brightness = sin_lookup[(cloudPeriod + x * 6) % 180];
+
+            uint8_t maxRow = 5 * (cloudDensity + 12) / 100;
+            for (uint8_t y = 0; y < maxRow; y++) {
+                multiplyColor(&cloudColor, (int)brightness * (maxRow-y) * 20 / 100, &ledColors[y * NUM_COLUMN + x]);
+            }
+        }
+
+        cloudPeriod = (cloudPeriod + 1) % 180;
+    }
 }
 
 
 ////// LIVE WEATHER //////
 
+static systime_t weatherLastUpdated = 0;
 static bool weatherUpToDate = false;
 static WeatherData weatherData;
 static void(*weatherAnimFn)(led_t*) = 0;
 
 void setWeatherData(WeatherData* data) {
-    weatherUpToDate = true;
     weatherData = *data;
+    weatherLastUpdated = sysTimeS();
+}
+
+void liveWeather_init(led_t* ledColors) {
+    void(*prevAnim)(led_t*) = weatherAnimFn;
 
     if (weatherData.snowIntensity > 0) {
         weatherAnimFn = anim_snowing;
         reactiveFps = 30;
 
-        snowing_init(0);
-        
-        int snowInt = weatherData.stormIntensity * 3;
-        if (snowInt > 100)
-            snowInt = 100;
-        snowIntensity = snowInt;
-
-        int rainInt = weatherData.rainIntensity * 3;
-        if (rainInt > 100)
-            rainInt = 100;
-        rainIntensity = rainInt;
+        if (prevAnim != weatherAnimFn)
+            snowing_init(ledColors);
     }
     else if (weatherData.stormIntensity > 0) {
         weatherAnimFn = anim_storm;
         reactiveFps = 30;
 
-        storm_init(0);
-        stormIntensity = weatherData.stormIntensity;
+        if (prevAnim != weatherAnimFn)
+            storm_init(ledColors);
     }
     else if (weatherData.rainIntensity > 0) {
         weatherAnimFn = anim_rain;
         reactiveFps = 30;
 
-        rain_init(0);
-        int rainInt = weatherData.rainIntensity * 3;
-        if (rainInt > 100)
-            rainInt = 100;
-        rainIntensity = rainInt;
+        if (prevAnim != weatherAnimFn)
+            rain_init(ledColors);
     }
-    else if (!(weatherData.time.hour > 6 && weatherData.time.hour < 19)) {
+    else if (!(
+        weatherData.time.hour*60 + weatherData.time.minute > weatherData.sunriseTime.hour*60 + weatherData.sunriseTime.minute &&
+        weatherData.time.hour*60 + weatherData.time.minute < weatherData.sunsetTime.hour*60 + weatherData.sunsetTime.minute)
+        ) {
         weatherAnimFn = anim_stars;
         reactiveFps = 6;
     }
-    else if (weatherData.cloudDensity >= 50) {
-        weatherAnimFn = anim_sunny;
-        reactiveFps = 15;
-
-        sunny_init(0);
-
-        const led_t cloudColor = {100, 100, 100};
-        sunny_color = cloudColor;
-    }
     else {
-        weatherAnimFn = anim_sunny;
+        weatherAnimFn = anim_cloudy;
         reactiveFps = 30;
 
-        sunny_init(0);
+        if (prevAnim != weatherAnimFn)
+            cloudy_init(ledColors);
     }
+    
+    snowIntensity = weatherData.snowIntensity;
+    rainIntensity = weatherData.rainIntensity;
+    cloudDensity = weatherData.cloudDensity;
+    sunIntensity = weatherData.sunIntensity;
 }
 
 void anim_liveWeather(led_t* ledColors) {
+    weatherUpToDate = sysTimeS() - weatherLastUpdated < 650;
+
     if (weatherUpToDate && weatherAnimFn) {
         weatherAnimFn(ledColors);
     }
     else {
         setAllColors(ledColors, &black);
-        ledColors[0] = red;
+        ledColors[16] = yellow;
     }
 }
 
