@@ -18,7 +18,7 @@
 
 #include "led_animation.h"
 #include "led_multiplexing.h"
-#include "hid_comm.h"
+#include "main_comm.h"
 
 
 static const SerialConfig usart1Config = {
@@ -43,7 +43,7 @@ int main(void) {
         msg_t msg;	
         msg = sdGet(&SD1);	
         if(msg >= MSG_OK){	
-            hid_comm_executeMsg(msg);	
+            main_comm_executeMsg(msg);	
         }
     }
 }

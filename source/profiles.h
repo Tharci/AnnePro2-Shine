@@ -72,4 +72,7 @@ typedef struct {
 void liveWeather_init(led_t* ledColors);
 void anim_liveWeather(led_t* ledColors);
 void setWeatherData(WeatherData* data);
+WeatherData* getWeatherData(void);
+bool weatherIsUpToDate(void);
+Time getCurrentTime(void);
 

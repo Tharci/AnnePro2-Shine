@@ -1,6 +1,6 @@
 #include "common_utils.h"
 #include "led_state.h"
-#include "hid_comm.h"
+#include "main_comm.h"
 #include "profiles.h"
 
 
@@ -36,13 +36,15 @@ enum LedMsgCode {           // Messages:
     LED_IAP_MODE,
     LED_POWER_PLAN,         // 1 byte; 0 - normal, 1 - power saving
     LED_UPDATE_WEATHER,
+    LED_SHOW_TEMP,
+    LED_SHOW_TIME
 };
 
 
 /*
  * Execute action based on a message
  */
-void hid_comm_executeMsg(msg_t msg){
+void main_comm_executeMsg(msg_t msg){
     switch (msg) {
         case LED_TOGGLE:
             toggleLeds();
@@ -130,6 +132,14 @@ void hid_comm_executeMsg(msg_t msg){
 
         case LED_UPDATE_WEATHER:
             readWeather();
+            break;
+
+        case LED_SHOW_TEMP:
+            displayTemp();
+            break;
+
+        case LED_SHOW_TIME:
+            displayTime();
             break;
 
         default:

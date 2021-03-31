@@ -3,6 +3,7 @@
 #include "led_animation.h"
 #include "string.h"
 #include "common_utils.h"
+#include "profiles.h"
 
 
 //// State ////
@@ -14,7 +15,14 @@ static int brightness = 100;
 static bool gamingMode = false;
 static bool isLocked = false;
 static int8_t currentProfile = 0;
-PowerPlan powerPlan = POWER_USB;
+static PowerPlan powerPlan = POWER_USB;
+
+static const systime_t numDisplaySpeed  = 400;
+static int8_t numToDisplay[20]; // numbers in the range of 0-9, number '-1' indicates '-' character
+static int numToDisplayIdx = -1;
+static bool numDisplayOn = false;
+static systime_t numDisplayLastSwitched = 0;
+static led_t numDisplayColor = {200, 255, 255};
 
 #define LED_TIMEOUT_BATTERY 180
 #define LED_TIMEOUT_USB     1200
@@ -131,7 +139,7 @@ void updateTimeout() {
 }
 
 void ledPostProcess() {
-    if(ledState && ledTimeoutState) {
+    if(ledState && ledTimeoutState && numToDisplayIdx < 0) {
         memcpy(ledColorsPost, ledColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
     }
     else {
@@ -175,6 +183,32 @@ void ledPostProcess() {
         if (gamingMode) {
             for (uint8_t i = 0; i < LEN(gamingArrows); i++) {
                 ledColorsPost[gamingArrows[i]] = gamingArrowLedColor;
+            }
+        }
+
+
+        if (numToDisplayIdx >= 0) {
+            if (sysTimeMs() - numDisplayLastSwitched > numDisplaySpeed) {
+                numDisplayOn = !numDisplayOn;
+                numDisplayLastSwitched = sysTimeMs();
+
+                if (numDisplayOn == false) {
+                    numToDisplayIdx--;
+                }
+            }
+
+
+            if (numDisplayOn) {
+                int8_t digitIdx = numToDisplay[numToDisplayIdx];
+
+                if (digitIdx == 0) 
+                    digitIdx = 10;
+                else if (digitIdx == -1)
+                    digitIdx = 11;
+                else if (digitIdx < -1 || digitIdx > 9)
+                    digitIdx = 0;
+
+                ledColorsPost[digitIdx] = numDisplayColor;
             }
         }
     }
@@ -294,3 +328,60 @@ void executeKeypress() {
 led_t* getLedsToDisplay() {
     return ledFinal;
 }
+
+
+static void displayNumberWhite(int value) {
+    numDisplayColor.red     = 0;
+    numDisplayColor.green   = 0;
+    numDisplayColor.blue    = 0;
+
+    displayNumber(value);
+}
+
+void displayNumber(int value) {
+    bool isNegative = (value < 0);
+    value = abs(value);
+
+    numToDisplayIdx = 0;
+    do {
+        numToDisplay[numToDisplayIdx++] = value % 10;
+        value /= 10;
+    } while (value > 0);
+
+    if (isNegative)
+        numToDisplay[numToDisplayIdx++] = -1;
+
+    numDisplayOn = true;
+}
+
+void displayNumberColored(int value, led_t color) {
+    numDisplayColor = color;
+    displayNumber(value);
+}
+
+
+void displayTemp(void) {
+    if (weatherIsUpToDate()) {
+        led_t yellow = {180, 255, 0};
+        displayNumberColored(getWeatherData()->temp, yellow);
+    }
+    else {
+        numToDisplayIdx = 0;
+        numToDisplay[0] = -10;
+    }
+}
+
+void displayTime(void) {
+    Time currTime = getCurrentTime();
+
+    numToDisplay[3] = currTime.hour / 10;
+    numToDisplay[2] = currTime.hour % 10;
+    numToDisplay[1] = currTime.minute / 10;
+    numToDisplay[0] = currTime.minute % 10;
+
+    led_t green = {0, 255, 30};
+    numDisplayColor = green;
+    
+    numToDisplayIdx = 3;
+}
+

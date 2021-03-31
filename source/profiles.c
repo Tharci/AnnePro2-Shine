@@ -576,6 +576,32 @@ void anim_liveWeather(led_t* ledColors) {
 }
 
 
+WeatherData* getWeatherData(void) {
+    return &weatherData;
+}
+
+bool weatherIsUpToDate(void) {
+    return weatherUpToDate;
+}
+
+Time getCurrentTime() {
+    if (weatherUpToDate) {
+        Time time = weatherData.time;
+        systime_t deltaTime = sysTimeS() - weatherLastUpdated;
+        systime_t currTimeS = time.second + time.minute * 60 + time.hour * 3600 + deltaTime;
+
+        time.second = currTimeS % 60;
+        time.minute = (currTimeS / 60) % 60;
+        time.hour   = (currTimeS / 3600) % 24;
+        
+        return time;
+    }
+
+    Time time = {0, 0, 0};
+    return time;
+}
+
+
 
 
 

@@ -29,6 +29,8 @@ uint8_t getProfileCount(void);
 uint8_t getCurrentProfileIndex(void);
 void ledPostProcess(void);
 led_t* getLedsToDisplay(void);
+void displayTemp(void);
+void displayTime(void);
 
 void executeInit(void);
 void executeProfile(void);
