@@ -90,33 +90,53 @@ inline uint8_t sPWM(uint8_t cycle, uint8_t currentCount, uint8_t start, ioline_t
     }
 }
 
-
-static void columnCallback() {
-    static uint8_t columnPWMCount = 0;
-    static uint8_t currentColumn = 0;
-
-    palClearLine(ledColumns[currentColumn]);
-
-    uint8_t colHasBeenSet = 0;
-    
-    currentColumn = (currentColumn+1) % NUM_COLUMN;
-    if (columnPWMCount < 255) {
-        for (size_t row = 0; row < NUM_ROW; row++) {
-            const size_t ledIndex = currentColumn + (NUM_COLUMN * row);
-            const led_t keyLED = getLedsToDisplay()[ledIndex];
-
-            colHasBeenSet += sPWM(keyLED.red, columnPWMCount, 0, ledRows[row << 2]);
-            colHasBeenSet += sPWM(keyLED.green, columnPWMCount, keyLED.red, ledRows[(row << 2) | 1]);
-            colHasBeenSet += sPWM(keyLED.blue, columnPWMCount, keyLED.red + keyLED.green, ledRows[(row << 2) | 2]);
-        }
-
-        columnPWMCount++;
+inline bool sPWM2(uint8_t value, uint8_t pwmCounter, uint8_t column, bool cycleState, ioline_t port){
+    //if ((column % 2 == 0 && pwmCounter < value) || 
+    //    (column % 2 == 1 && 256 - pwmCounter < value)) 
+    if (pwmCounter < value && (column + cycleState) % 2)
+    {
+        palSetLine(port);
+        return true;
     }
     else {
-        columnPWMCount = 0;
+        palClearLine(port);
+        return false;
+    }
+}
+
+
+static void columnCallback() {
+    static uint8_t pwmCounter = 0;
+    static uint8_t currentColumn = 0;
+    static bool colHasBeenSet = true;
+    static bool cycleState = false;
+
+    if (colHasBeenSet)
+        palClearLine(ledColumns[currentColumn]);
+
+
+    currentColumn = (currentColumn + 1) % NUM_COLUMN;
+    if (currentColumn == 0) {
+        cycleState = !cycleState;
     }
 
-    if (colHasBeenSet) {
-        palSetLine(ledColumns[currentColumn]);
+    colHasBeenSet = false;
+    
+    for (uint8_t row = 0; row < NUM_ROW; row++) {
+        const led_t keyLED = getLedsToDisplay()[currentColumn + NUM_COLUMN * row];
+
+        colHasBeenSet += sPWM2(keyLED.red, pwmCounter, currentColumn, cycleState, ledRows[row << 2]);
+        colHasBeenSet += sPWM2(keyLED.green, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 1]);
+        colHasBeenSet += sPWM2(keyLED.blue, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 2]);
+
+        // colHasBeenSet += sPWM(keyLED.red, pwmCounter, 0, ledRows[row << 2]);
+        // colHasBeenSet += sPWM(keyLED.green, pwmCounter, keyLED.red, ledRows[(row << 2) | 1]);
+        // colHasBeenSet += sPWM(keyLED.blue, pwmCounter, keyLED.red + keyLED.green, ledRows[(row << 2) | 2]);
     }
+
+    if ((currentColumn + cycleState) % 2) 
+        pwmCounter++;
+
+    if (colHasBeenSet && (currentColumn + cycleState) % 2)
+        palSetLine(ledColumns[currentColumn]);
 }
