@@ -89,14 +89,14 @@ uint8_t rainIntensity = 50;
 const systime_t rainSpeedMs = 55;
 systime_t lastMoved = 0;
 
-void rain_init(led_t* ledColors) {
+void prof_rain_init(led_t* ledColors) {
     raindropCnt = 0;
     nextRainSpawn = 0;
     lastMoved = 0;
     rainIntensity = 50;
 }
 
-void anim_rain(led_t* ledColors) {
+void prof_rain_tick(led_t* ledColors) {
     if (sysTimeMs() - lastMoved > rainSpeedMs) {
         for (size_t i = 0; i < raindropCnt; i++) {
             raindrops[i].y++;
@@ -166,14 +166,14 @@ systime_t nextLightnSpawn = 0;
 
 uint8_t stormIntensity = 50;
 
-void storm_init(led_t* ledColors) {
-    rain_init(ledColors);
+void prof_storm_init(led_t* ledColors) {
+    prof_rain_init(ledColors);
     stormIntensity = 50;
 }
 
-void anim_storm(led_t* ledColors) {
+void prof_storm_tick(led_t* ledColors) {
     // Call rain animation
-    anim_rain(ledColors);
+    prof_rain_tick(ledColors);
 
     // Add lightning
     if (sysTimeMs() >= nextLightnSpawn) {
@@ -230,37 +230,37 @@ typedef struct {
     pos_i pos;
     led_t color;
     int brightness;
-} keyTap;
+} breathKeypress;
 
-#define keyTapsBufferSize 25
-keyTap keyTaps[keyTapsBufferSize];
-size_t keyTapsCnt = 0;
-const uint8_t fadeSpeed = 8;
+#define breathKeypressBuffSize 25
+breathKeypress breathKeypresses[breathKeypressBuffSize];
+size_t breathKeypressCount = 0;
+const uint8_t breathFadeSpeed = 8;
 
 
-void anim_breathing(led_t* ledColors) {
+void prof_breathing_tick(led_t* ledColors) {
     setAllColors(ledColors, &black);
-    for (size_t i = 0; i < keyTapsCnt; i++) {
-        multiplyColor(&keyTaps[i].color, keyTaps[i].brightness, 
-            &ledColors[keyTaps[i].pos.y * NUM_COLUMN + keyTaps[i].pos.x]);
+    for (size_t i = 0; i < breathKeypressCount; i++) {
+        multiplyColor(&breathKeypresses[i].color, breathKeypresses[i].brightness, 
+            &ledColors[breathKeypresses[i].pos.y * NUM_COLUMN + breathKeypresses[i].pos.x]);
 
-        keyTaps[i].brightness -= fadeSpeed;
+        breathKeypresses[i].brightness -= breathFadeSpeed;
     }
 
 
     size_t deleteTapIdx = 0;
-    while (deleteTapIdx < keyTapsCnt && keyTaps[deleteTapIdx].brightness <= 0) {
+    while (deleteTapIdx < breathKeypressCount && breathKeypresses[deleteTapIdx].brightness <= 0) {
         deleteTapIdx++;
     }
 
-    for (size_t i = deleteTapIdx; i < keyTapsCnt; i++) {
-      keyTaps[i-deleteTapIdx] = keyTaps[i];
+    for (size_t i = deleteTapIdx; i < breathKeypressCount; i++) {
+      breathKeypresses[i-deleteTapIdx] = breathKeypresses[i];
     }
-    keyTapsCnt -= deleteTapIdx;
+    breathKeypressCount -= deleteTapIdx;
 }
 
-void breathing_init(led_t* ledColors) {
-    keyTapsCnt = 0;
+void prof_breathing_init(led_t* ledColors) {
+    breathKeypressCount = 0;
 }
 
 
@@ -275,15 +275,15 @@ led_t breathing_colors[] = {
     turkiz
 };
 
-void pressed_breathing(uint8_t x, uint8_t y, led_t* ledColors) {
-    if(keyTapsCnt < keyTapsBufferSize) {
-        keyTaps[keyTapsCnt].pos.x = x;
-        keyTaps[keyTapsCnt].pos.y = y;
-        keyTaps[keyTapsCnt].color = 
+void prof_breathing_pressed(uint8_t x, uint8_t y, led_t* ledColors) {
+    if(breathKeypressCount < breathKeypressBuffSize) {
+        breathKeypresses[breathKeypressCount].pos.x = x;
+        breathKeypresses[breathKeypressCount].pos.y = y;
+        breathKeypresses[breathKeypressCount].color = 
             breathing_colors[randInt() % LEN(breathing_colors)];
-        keyTaps[keyTapsCnt].brightness = 100;
+        breathKeypresses[breathKeypressCount].brightness = 100;
 
-        keyTapsCnt++;
+        breathKeypressCount++;
     }
 }
 
@@ -304,7 +304,7 @@ uint8_t snowflakeCnt = 0;
 int snowflakeSpawnTimer = 0;
 uint8_t snowIntensity = 50;
 
-void anim_snowing(led_t* ledColors) {
+void prof_snowing_tick(led_t* ledColors) {
     setAllColors(ledColors, &black);
 
     for (int i = 0; i < snowflakeCnt; i++) {
@@ -344,7 +344,7 @@ void anim_snowing(led_t* ledColors) {
     }
 }
 
-void snowing_init(led_t* ledColors) {
+void prof_snowing_init(led_t* ledColors) {
     snowflakeCnt = 0;
     snowIntensity = 50;
 }
@@ -357,7 +357,7 @@ led_t locked_color = {255, 20, 20};
 uint8_t lockedIntensity = 0;
 bool lockedAnimDir = 1;
 
-void anim_locked(led_t* ledColors) {
+void prof_locked_tick(led_t* ledColors) {
     if (lockedAnimDir) {
         lockedIntensity += 2;
 
@@ -379,7 +379,7 @@ void anim_locked(led_t* ledColors) {
     setAllColors(ledColors, &multipliedColor);
 }
 
-void locked_init(led_t* ledColors) {
+void prof_locked_init(led_t* ledColors) {
     lockedIntensity = 0;
     lockedAnimDir = 1;
 }
@@ -405,7 +405,7 @@ static const star stars[] = {
     { {3, 3}, 10 },
 };
 
-void anim_stars(led_t* ledColors) {
+void prof_stars_tick(led_t* ledColors) {
     setAllColors(ledColors, &black);
 
     for (uint8_t i = 0; i < LEN(stars); i++) {
@@ -436,7 +436,7 @@ static uint16_t sunRotation = 0;
 static pos_i sunPos = {0, 0};
 
 
-void anim_sunny(led_t* ledColors) {
+void prof_sunny_tick(led_t* ledColors) {
     for (uint8_t y = 0; y < NUM_ROW; y++) {
         for (uint8_t x = 0; x < NUM_COLUMN; x++) {
             uint8_t x_rel = abs(x - sunPos.x);
@@ -464,7 +464,7 @@ void anim_sunny(led_t* ledColors) {
     sunRotation = (sunRotation + 1) % 360;
 }
 
-void sunny_init(led_t* ledColors) {
+void prof_sunny_init(led_t* ledColors) {
     
 }
 
@@ -480,17 +480,17 @@ static uint8_t cloudDensity = 100;
 static uint16_t cloudPeriod = 0;
 static led_t cloudColor = {130, 200, 200};
 
-void cloudy_init(led_t* ledColors) {
-    sunny_init(ledColors);
+void prof_cloudy_init(led_t* ledColors) {
+    prof_sunny_init(ledColors);
 
     cloudDensity = 100; 
 }
 
-void anim_cloudy(led_t* ledColors) {
+void prof_cloudy_tick(led_t* ledColors) {
     uint8_t maxRow = NUM_ROW * (cloudDensity + 12) / 100;
     
     if (maxRow < NUM_ROW) {
-        anim_sunny(ledColors);
+        prof_sunny_tick(ledColors);
     }
 
     if (cloudDensity) {
@@ -519,43 +519,43 @@ void setWeatherData(WeatherData* data) {
     weatherLastUpdated = sysTimeS();
 }
 
-void liveWeather_init(led_t* ledColors) {
+void prof_liveWeather_init(led_t* ledColors) {
     void(*prevAnim)(led_t*) = weatherAnimFn;
 
     if (weatherData.snowIntensity > 0) {
-        weatherAnimFn = anim_snowing;
+        weatherAnimFn = prof_snowing_tick;
         reactiveFps = 30;
 
         if (prevAnim != weatherAnimFn)
-            snowing_init(ledColors);
+            prof_snowing_init(ledColors);
     }
     else if (weatherData.stormIntensity > 0) {
-        weatherAnimFn = anim_storm;
+        weatherAnimFn = prof_storm_tick;
         reactiveFps = 30;
 
         if (prevAnim != weatherAnimFn)
-            storm_init(ledColors);
+            prof_storm_init(ledColors);
     }
     else if (weatherData.rainIntensity > 0) {
-        weatherAnimFn = anim_rain;
+        weatherAnimFn = prof_rain_tick;
         reactiveFps = 30;
 
         if (prevAnim != weatherAnimFn)
-            rain_init(ledColors);
+            prof_rain_init(ledColors);
     }
     else if (!(
         weatherData.time.hour*60 + weatherData.time.minute > weatherData.sunriseTime.hour*60 + weatherData.sunriseTime.minute &&
         weatherData.time.hour*60 + weatherData.time.minute < weatherData.sunsetTime.hour*60 + weatherData.sunsetTime.minute)
         ) {
-        weatherAnimFn = anim_stars;
+        weatherAnimFn = prof_stars_tick;
         reactiveFps = 6;
     }
     else {
-        weatherAnimFn = anim_cloudy;
+        weatherAnimFn = prof_cloudy_tick;
         reactiveFps = 30;
 
         if (prevAnim != weatherAnimFn)
-            cloudy_init(ledColors);
+            prof_cloudy_init(ledColors);
     }
     
     snowIntensity = weatherData.snowIntensity;
@@ -563,7 +563,7 @@ void liveWeather_init(led_t* ledColors) {
     cloudDensity = weatherData.cloudDensity;
 }
 
-void anim_liveWeather(led_t* ledColors) {
+void prof_liveWeather_tick(led_t* ledColors) {
     weatherUpToDate = sysTimeS() - weatherLastUpdated < 650;
 
     if (weatherUpToDate && weatherAnimFn) {
@@ -601,6 +601,44 @@ Time getCurrentTime() {
     return time;
 }
 
+
+
+////// BLINKING //////
+
+typedef struct {
+    pos_i pos;
+    led_t color;
+    int brightness;
+} blink;
+
+#define blinkBuffSize 25
+blink blinks[blinkBuffSize];
+size_t blinkCount = 0;
+const uint8_t blinkFadeSpeed = 8;
+systime_t nextBlinkTime = 0;
+
+
+void prof_blink_init(led_t* ledColors) {
+    blinkCount = 0;
+}
+
+void prof_blink_tick(led_t* ledColors) {
+    systime_t currTimeMs = sysTimeMs();
+    if (nextBlinkTime <= currTimeMs) {
+        if (blinkCount < blinkBuffSize) {
+            blinkCount++;
+            //// TODO
+        }
+
+        nextBlinkTime = currTimeMs + 300 + randInt() % 600;
+    }
+
+}
+
+
+void prof_blink_pressed(uint8_t x, uint8_t y, led_t* keyColors) {
+
+}
 
 
 

@@ -22,29 +22,29 @@ uint8_t getReactiveFps(void);
 
 void animatedRainbowFlow(led_t* ledColors);
 
-void rain_init(led_t* ledColors);
-void anim_rain(led_t* keyColors);
+void prof_rain_init(led_t* ledColors);
+void prof_rain_tick(led_t* keyColors);
 
-void storm_init(led_t* ledColors);
-void anim_storm(led_t* keyColors);
+void prof_storm_init(led_t* ledColors);
+void prof_storm_tick(led_t* keyColors);
 
-void breathing_init(led_t* ledColors);
-void anim_breathing(led_t* keyColors);
-void pressed_breathing(uint8_t x, uint8_t y, led_t* keyColors);
+void prof_breathing_init(led_t* ledColors);
+void prof_breathing_tick(led_t* keyColors);
+void prof_breathing_pressed(uint8_t x, uint8_t y, led_t* keyColors);
 
-void snowing_init(led_t* ledColors);
-void anim_snowing(led_t* keyColors);
+void prof_snowing_init(led_t* ledColors);
+void prof_snowing_tick(led_t* keyColors);
 
-void locked_init(led_t* ledColors);
-void anim_locked(led_t* ledColors);
+void prof_locked_init(led_t* ledColors);
+void prof_locked_tick(led_t* ledColors);
 
-void anim_stars(led_t* ledColors);
+void prof_stars_tick(led_t* ledColors);
 
-void sunny_init(led_t* ledColors);
-void anim_sunny(led_t* ledColors);
+void prof_sunny_init(led_t* ledColors);
+void prof_sunny_tick(led_t* ledColors);
 
-void cloudy_init(led_t* ledColors);
-void anim_cloudy(led_t* ledColors);
+void prof_cloudy_init(led_t* ledColors);
+void prof_cloudy_tick(led_t* ledColors);
 
 
 typedef struct {
@@ -69,8 +69,8 @@ typedef struct {
     bool mist;
 } WeatherData;
 
-void liveWeather_init(led_t* ledColors);
-void anim_liveWeather(led_t* ledColors);
+void prof_liveWeather_init(led_t* ledColors);
+void prof_liveWeather_tick(led_t* ledColors);
 void setWeatherData(WeatherData* data);
 WeatherData* getWeatherData(void);
 bool weatherIsUpToDate(void);

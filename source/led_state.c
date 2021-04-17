@@ -43,17 +43,17 @@ static systime_t bltLedLastSwitched = 0;
 //// Profiles ////
 
 static Profile profiles[] = {
-    { 30, anim_rain, rain_init, 0 },
-    { 30, anim_storm, storm_init, 0 },
+    { 30, prof_rain_tick, prof_rain_init, 0 },
+    { 30, prof_storm_tick, prof_storm_init, 0 },
     { 30, animatedRainbowFlow, 0, 0 },
-    { 30, anim_breathing, breathing_init, pressed_breathing },
-    { 30, anim_snowing, snowing_init, 0 },
-    { 6,  anim_stars, 0, 0 },
-    { 30, anim_sunny, sunny_init, 0 },
-    { REACTIVE_FPS,  anim_liveWeather, liveWeather_init, 0 },
+    { 30, prof_breathing_tick, prof_breathing_init, prof_breathing_pressed },
+    { 30, prof_snowing_tick, prof_snowing_init, 0 },
+    { 6,  prof_stars_tick, 0, 0 },
+    { 30, prof_sunny_tick, prof_sunny_init, 0 },
+    { REACTIVE_FPS,  prof_liveWeather_tick, prof_liveWeather_init, 0 },
 };
 
-static Profile lockedProfile = { 30, anim_locked, locked_init, 0 };
+static Profile lockedProfile = { 30, prof_locked_tick, prof_locked_init, 0 };
 static uint8_t profileCount = sizeof(profiles)/sizeof(Profile);
 
 //// ////
@@ -360,14 +360,18 @@ void displayNumberColored(int value, led_t color) {
 }
 
 
+static void displayInvalidNumber(void) {
+    numToDisplayIdx = 0;
+    numToDisplay[0] = -10;
+}
+
 void displayTemp(void) {
     if (weatherIsUpToDate()) {
         led_t yellow = {180, 255, 0};
         displayNumberColored(getWeatherData()->temp, yellow);
     }
     else {
-        numToDisplayIdx = 0;
-        numToDisplay[0] = -10;
+        displayInvalidNumber();
     }
 }
 

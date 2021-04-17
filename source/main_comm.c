@@ -224,7 +224,7 @@ static void readWeather(void) {
     setWeatherData((WeatherData*) commandBuffer);
 
     Profile* currProfile = getCurrentProfile();
-    if (currProfile->tick == anim_liveWeather) {
+    if (currProfile->tick == prof_liveWeather_tick) {
         executeInit();
     }
 }
