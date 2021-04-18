@@ -233,9 +233,11 @@ typedef struct {
 } breathKeypress;
 
 #define breathKeypressBuffSize 25
-breathKeypress breathKeypresses[breathKeypressBuffSize];
-size_t breathKeypressCount = 0;
-const uint8_t breathFadeSpeed = 8;
+static breathKeypress breathKeypresses[breathKeypressBuffSize];
+static size_t breathKeypressCount = 0;
+static uint8_t breathFadeSpeed;
+static bool breathRandomColor;
+static led_t breathColor = turkiz;
 
 
 void prof_breathing_tick(led_t* ledColors) {
@@ -261,10 +263,12 @@ void prof_breathing_tick(led_t* ledColors) {
 
 void prof_breathing_init(led_t* ledColors) {
     breathKeypressCount = 0;
+    breathRandomColor = true;
+    breathFadeSpeed = 8;
 }
 
 
-led_t breathing_colors[] = {
+static led_t breathing_colors[] = {
     red,
     green,
     blue,
@@ -279,8 +283,13 @@ void prof_breathing_pressed(uint8_t x, uint8_t y, led_t* ledColors) {
     if(breathKeypressCount < breathKeypressBuffSize) {
         breathKeypresses[breathKeypressCount].pos.x = x;
         breathKeypresses[breathKeypressCount].pos.y = y;
-        breathKeypresses[breathKeypressCount].color = 
-            breathing_colors[randInt() % LEN(breathing_colors)];
+
+        if (breathRandomColor)
+            breathKeypresses[breathKeypressCount].color = 
+                breathing_colors[randInt() % LEN(breathing_colors)];
+        else
+            breathKeypresses[breathKeypressCount].color = breathColor;
+
         breathKeypresses[breathKeypressCount].brightness = 100;
 
         breathKeypressCount++;
@@ -605,41 +614,62 @@ Time getCurrentTime() {
 
 ////// BLINKING //////
 
-typedef struct {
-    pos_i pos;
-    led_t color;
-    int brightness;
-} blink;
-
-#define blinkBuffSize 25
-blink blinks[blinkBuffSize];
-size_t blinkCount = 0;
-const uint8_t blinkFadeSpeed = 8;
-systime_t nextBlinkTime = 0;
-
-
 void prof_blink_init(led_t* ledColors) {
-    blinkCount = 0;
+    prof_breathing_init(ledColors);
+
+    breathRandomColor = false;
+    breathColor = turkiz;
+    breathFadeSpeed = 4;
 }
 
 void prof_blink_tick(led_t* ledColors) {
+    static systime_t nextBlinkTime = 0;
+
     systime_t currTimeMs = sysTimeMs();
     if (nextBlinkTime <= currTimeMs) {
-        if (blinkCount < blinkBuffSize) {
-            blinkCount++;
-            //// TODO
-        }
+        prof_breathing_pressed(randInt() % NUM_COLUMN, randInt() % NUM_ROW, ledColors);
 
-        nextBlinkTime = currTimeMs + 300 + randInt() % 600;
+        nextBlinkTime = currTimeMs + 20 + randInt() % 300;
+    }
+ 
+    prof_breathing_tick(ledColors);
+}
+
+
+
+////// WEATHER SHOWOFF //////
+
+static const Profile weatherProfiles[] = {
+    { 30, prof_sunny_tick, prof_sunny_init, 0 },
+    { 30, prof_cloudy_tick, prof_cloudy_init, 0 },
+    { 30, prof_storm_tick, prof_storm_init, 0 },
+    { 6,  prof_stars_tick, 0, 0 },
+    { 30, prof_snowing_tick, prof_snowing_init, 0 },
+};
+
+static systime_t nextWeatherSwitchTime;
+static int currWeatherProfile;
+
+void prof_weatherShowoff_init(led_t* ledColors) {
+    nextWeatherSwitchTime = 0;
+    currWeatherProfile = -1;
+}
+
+void prof_weatherShowoff_tick(led_t* ledColors) {
+    static const uint32_t animDuration = 6;
+
+    systime_t currTimeS = sysTimeS();
+    if (nextWeatherSwitchTime <= currTimeS) {
+        nextWeatherSwitchTime = currTimeS + animDuration;
+        currWeatherProfile = (currWeatherProfile + 1) % LEN(weatherProfiles);
+
+        reactiveFps = weatherProfiles[currWeatherProfile].fps;
+
+        if (weatherProfiles[currWeatherProfile].init)
+            weatherProfiles[currWeatherProfile].init(ledColors);
     }
 
+    weatherProfiles[currWeatherProfile].tick(ledColors);
 }
-
-
-void prof_blink_pressed(uint8_t x, uint8_t y, led_t* keyColors) {
-
-}
-
-
 
 

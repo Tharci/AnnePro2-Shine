@@ -76,3 +76,13 @@ WeatherData* getWeatherData(void);
 bool weatherIsUpToDate(void);
 Time getCurrentTime(void);
 
+void prof_blink_init(led_t* ledColors);
+void prof_blink_tick(led_t* ledColors);
+
+void prof_weatherShowoff_init(led_t* ledColors);
+void prof_weatherShowoff_tick(led_t* ledColors);
+
+
+
+
+

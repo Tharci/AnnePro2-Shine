@@ -42,19 +42,16 @@ static systime_t bltLedLastSwitched = 0;
 
 //// Profiles ////
 
-static Profile profiles[] = {
-    { 30, prof_rain_tick, prof_rain_init, 0 },
-    { 30, prof_storm_tick, prof_storm_init, 0 },
+static const Profile profiles[] = {
     { 30, animatedRainbowFlow, 0, 0 },
     { 30, prof_breathing_tick, prof_breathing_init, prof_breathing_pressed },
-    { 30, prof_snowing_tick, prof_snowing_init, 0 },
-    { 6,  prof_stars_tick, 0, 0 },
-    { 30, prof_sunny_tick, prof_sunny_init, 0 },
     { REACTIVE_FPS,  prof_liveWeather_tick, prof_liveWeather_init, 0 },
+    { 30, prof_blink_tick, prof_blink_init, 0 },
+    { REACTIVE_FPS, prof_weatherShowoff_tick, prof_weatherShowoff_init, 0 }
 };
 
-static Profile lockedProfile = { 30, prof_locked_tick, prof_locked_init, 0 };
-static uint8_t profileCount = sizeof(profiles)/sizeof(Profile);
+static const Profile lockedProfile = { 30, prof_locked_tick, prof_locked_init, 0 };
+static const uint8_t profileCount = sizeof(profiles)/sizeof(Profile);
 
 //// ////
 

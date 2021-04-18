@@ -77,24 +77,8 @@ void led_multiplexing_init() {
     chThdCreateStatic(waThread1, sizeof(waThread1), NORMALPRIO, Thread1, NULL);
 }
 
-
-inline uint8_t sPWM(uint8_t cycle, uint8_t currentCount, uint8_t start, ioline_t port){
-    if (start+cycle>0xFF) start = 0xFF - cycle;
-    if (start <= currentCount && currentCount < start+cycle) {
-        palSetLine(port);
-        return 1;
-    }
-    else {
-        palClearLine(port);
-        return 0;
-    }
-}
-
-inline bool sPWM2(uint8_t value, uint8_t pwmCounter, uint8_t column, bool cycleState, ioline_t port){
-    //if ((column % 2 == 0 && pwmCounter < value) || 
-    //    (column % 2 == 1 && 256 - pwmCounter < value)) 
-    if (pwmCounter < value && (column + cycleState) % 2)
-    {
+inline bool sPWM(uint8_t value, uint8_t pwmCounter, uint8_t column, bool cycleState, ioline_t port) {
+    if (pwmCounter < value && (column + cycleState) % 2) {
         palSetLine(port);
         return true;
     }
@@ -109,6 +93,13 @@ static void columnCallback() {
     static uint8_t pwmCounter = 0;
     static uint8_t currentColumn = 0;
     static bool colHasBeenSet = true;
+
+    /* 
+     * @var cycleState Keeps track of which columns are updated in the current cycle (odd or even).
+     *                 Only odd or only even columns are updated in one cycle. The calculations are 
+     *                 done on the remaining columns aswell just to give a little time for the voltage to drop.
+     *                 This method prevents bleeding.
+     */
     static bool cycleState = false;
 
     if (colHasBeenSet)
@@ -125,13 +116,9 @@ static void columnCallback() {
     for (uint8_t row = 0; row < NUM_ROW; row++) {
         const led_t keyLED = getLedsToDisplay()[currentColumn + NUM_COLUMN * row];
 
-        colHasBeenSet += sPWM2(keyLED.red, pwmCounter, currentColumn, cycleState, ledRows[row << 2]);
-        colHasBeenSet += sPWM2(keyLED.green, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 1]);
-        colHasBeenSet += sPWM2(keyLED.blue, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 2]);
-
-        // colHasBeenSet += sPWM(keyLED.red, pwmCounter, 0, ledRows[row << 2]);
-        // colHasBeenSet += sPWM(keyLED.green, pwmCounter, keyLED.red, ledRows[(row << 2) | 1]);
-        // colHasBeenSet += sPWM(keyLED.blue, pwmCounter, keyLED.red + keyLED.green, ledRows[(row << 2) | 2]);
+        colHasBeenSet += sPWM(keyLED.red, pwmCounter, currentColumn, cycleState, ledRows[row << 2]);
+        colHasBeenSet += sPWM(keyLED.green, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 1]);
+        colHasBeenSet += sPWM(keyLED.blue, pwmCounter, currentColumn, cycleState, ledRows[(row << 2) | 2]);
     }
 
     if ((currentColumn + cycleState) % 2) 
