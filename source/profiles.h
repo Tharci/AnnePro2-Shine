@@ -18,6 +18,17 @@ typedef struct {
 } Profile;
 
 
+// tick function for one-shot effects
+// returns false if effect is done
+typedef bool (*oneShot_tick)( led_t* );
+
+typedef struct {
+    anim_init init; // == 0 when disabled
+    oneShot_tick tick; 
+    uint8_t fps;
+} OneShotEffect;
+
+
 uint8_t getReactiveFps(void);
 
 void animatedRainbowFlow(led_t* ledColors);
@@ -82,6 +93,12 @@ void prof_blink_tick(led_t* ledColors);
 void prof_weatherShowoff_init(led_t* ledColors);
 void prof_weatherShowoff_tick(led_t* ledColors);
 
+
+
+void effect_power_batt_init(led_t* ledColors);
+void effect_power_usb_init(led_t* ledColors);
+void effect_power_max_init(led_t* ledColors);
+bool effect_power_tick(led_t* ledColors);
 
 
 

@@ -78,6 +78,47 @@ static led_t ledColors[70];
 
 //// ////
 
+
+//// One-Shot Effect ////
+
+static led_t oneShotLedColors[70];
+
+OneShotEffect oneShotEffect = {
+    .tick = NULL
+};
+
+void registerOneShotEffect(OneShotEffect effect) {
+    oneShotEffect = effect;
+    if (oneShotEffect.init) {
+        oneShotEffect.init(oneShotLedColors);
+    }
+
+    memset(oneShotLedColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+}
+
+bool oneShotEffectIsActive() {
+    return oneShotEffect.tick != NULL;
+}
+
+void disableOneShotEffect() {
+    oneShotEffect.tick = NULL;
+}
+
+OneShotEffect* getOneShotEffect() {
+    return &oneShotEffect;
+}
+
+void executeOneShotEffect(void) {
+    if (oneShotEffectIsActive()) {
+        if (!oneShotEffect.tick(oneShotLedColors)) {
+            disableOneShotEffect();
+        }
+    }
+}
+
+//// ////
+
+
 Profile* getCurrentProfile() {
     if (isLocked)
         return &lockedProfile;
@@ -124,8 +165,11 @@ void toggleLeds() {
 }
 
 void updateTimeout() {
-    if (ledTimeoutState) {
-        int ledTimeout = (powerPlan == POWER_BATTERY) ?
+    if (powerPlan == POWER_MAX) {
+        ledTimeoutState = true;
+    }
+    else if (ledTimeoutState) {
+        int ledTimeout = (powerPlan == POWER_BATT) ?
             LED_TIMEOUT_BATTERY : LED_TIMEOUT_USB;
 
         if (sysTimeMs() - lastKeypress >= ledTimeout * 1000) {
@@ -144,7 +188,7 @@ void ledPostProcess() {
     }
 
 
-    if (!isLocked) {
+    if (!isLocked && !oneShotEffectIsActive()) {
         if (brightness < 100) {
             for (int i = 0; i < NUM_COLUMN * NUM_ROW; i++) {
                 ledColorsPost[i].red = (ledColorsPost[i].red * brightness) / 100;
@@ -210,7 +254,12 @@ void ledPostProcess() {
         }
     }
 
-    memcpy(ledFinal, ledColorsPost, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+    if (oneShotEffectIsActive()) {
+        memcpy(ledFinal, oneShotLedColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+    }
+    else {
+        memcpy(ledFinal, ledColorsPost, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+    }
 }
 
 
@@ -276,8 +325,44 @@ void keyPressedCallback(uint8_t keyPos) {
 }
 
 
+static OneShotEffect powerBattEffect = {
+    effect_power_batt_init,
+    effect_power_tick,
+    60
+};
+
+static OneShotEffect powerUsbEffect = {
+    effect_power_usb_init,
+    effect_power_tick,
+    60
+};
+
+static OneShotEffect powerMaxEffect = {
+    effect_power_max_init,
+    effect_power_tick,
+    60
+};
+
 void setPowerPlan(PowerPlan pp) {
     powerPlan = pp;
+
+    switch (powerPlan)
+    {
+    case POWER_BATT:
+        registerOneShotEffect(powerBattEffect);
+        break;
+        
+    case POWER_USB:
+        registerOneShotEffect(powerUsbEffect);
+        break;
+        
+    case POWER_MAX:
+        registerOneShotEffect(powerMaxEffect);
+        break;
+    
+    default:
+        break;
+    }
 }
 
 void setLocked(bool locked) {
@@ -288,8 +373,6 @@ uint8_t getProfileCount(void) {
     return profileCount;
 }
 
-
-
 void executeProfile() {
     if (ledState && ledTimeoutState) {
         anim_tick tick = getCurrentProfile()->tick;
@@ -299,8 +382,6 @@ void executeProfile() {
     executeKeypress();
     ledPostProcess();
 }
-
-
 
 void executeInit() {
     memset(ledColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));

@@ -41,10 +41,10 @@ static void setColor(led_t* ledColors, const pos_i* pos, const led_t* color) {
 }
 
 
-static void multiplyColor(const led_t* color, uint8_t brightness, led_t* color2) {
-    color2->red   = (((int)color->red) * brightness / 100);
-    color2->green = (((int)color->green) * brightness / 100);
-    color2->blue  = (((int)color->blue) * brightness / 100);
+static void multiplyColor(const led_t* sourceColor, uint8_t brightness, led_t* destColor) {
+    destColor->red   = (((int)sourceColor->red) * brightness / 100);
+    destColor->green = (((int)sourceColor->green) * brightness / 100);
+    destColor->blue  = (((int)sourceColor->blue) * brightness / 100);
 }
 
 
@@ -618,7 +618,7 @@ void prof_blink_init(led_t* ledColors) {
     prof_breathing_init(ledColors);
 
     breathRandomColor = false;
-    breathColor = turkiz;
+    breathColor = purple;
     breathFadeSpeed = 4;
 }
 
@@ -671,5 +671,62 @@ void prof_weatherShowoff_tick(led_t* ledColors) {
 
     weatherProfiles[currWeatherProfile].tick(ledColors);
 }
+
+
+////// POWER EFFECTS //////
+
+static led_t powerEffectColor;
+
+static void effect_power_init(void) {
+    
+}
+
+void effect_power_batt_init(led_t* ledColors) {
+    effect_power_init();
+    powerEffectColor = green;
+}
+
+void effect_power_usb_init(led_t* ledColors) {
+    effect_power_init();
+    powerEffectColor = yellow;
+}
+
+void effect_power_max_init(led_t* ledColors) {
+    effect_power_init();
+    powerEffectColor = red;
+}
+
+bool effect_power_tick(led_t* ledColors) {
+    static const uint8_t weaveOffset = 30;
+    static int16_t weavePos = -weaveOffset; // 0 - 100
+    static const uint8_t weaveWidth = 15;
+    
+    setAllColors(ledColors, &black);
+
+    for (int x = 0; x < NUM_COLUMN; x++) {
+        int distance = abs(((int)x * 100 / (NUM_COLUMN - 1)) - weavePos);
+        if (distance >= weaveWidth)
+            continue;
+            
+        int brightness = (int)(weaveWidth - distance) * 100 / weaveWidth;
+
+        for (int y = 0; y < NUM_ROW; y++) {
+            multiplyColor(&powerEffectColor, brightness, &ledColors[y * NUM_COLUMN + x]);
+        }
+    }
+
+    weavePos += 3;
+
+    if (weavePos >= 100 + weaveOffset) {
+        weavePos = -weaveOffset;
+        return false;
+    }
+    
+    return true;
+}
+
+
+
+
 
 

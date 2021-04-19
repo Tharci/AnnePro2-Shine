@@ -34,10 +34,10 @@ enum LedMsgCode {           // Messages:
     LED_GAMING_OFF,
     LED_SET_LOCKED,
     LED_IAP_MODE,
-    LED_POWER_PLAN,         // 1 byte; 0 - normal, 1 - power saving
+    LED_SET_POWER_PLAN,     // 1 byte; 0 - battery, 1 - usb, 2 - max
     LED_UPDATE_WEATHER,
     LED_SHOW_TEMP,
-    LED_SHOW_TIME
+    LED_SHOW_TIME,
 };
 
 
@@ -126,7 +126,7 @@ void main_comm_executeMsg(msg_t msg){
             goIntoIAP();
             break;
 
-        case LED_POWER_PLAN:
+        case LED_SET_POWER_PLAN:
             readPowerPlan();
             break;
 

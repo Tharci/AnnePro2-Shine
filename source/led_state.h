@@ -4,7 +4,7 @@
 #include "profiles.h"
 
 
-typedef enum { POWER_USB, POWER_BATTERY } PowerPlan;
+typedef enum { POWER_BATT, POWER_USB, POWER_MAX } PowerPlan;
 
 void led_state_init(void);
 void switchProfile(int profile);
@@ -40,4 +40,8 @@ void updateTimeout(void);
 
 void displayNumber(int value);
 
+void registerOneShotEffect(OneShotEffect effect);
+bool oneShotEffectIsActive(void);
+OneShotEffect* getOneShotEffect(void);
+void executeOneShotEffect(void);
 

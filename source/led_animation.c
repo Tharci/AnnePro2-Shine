@@ -3,8 +3,7 @@
 #include "led_state.h"
 
 
-#define ANIMATION_TIMER_FREQUENCY   60
-
+#define FPS_TO_TIEOUT(X) (ANIMATION_TIMER_FREQUENCY/X)
 
 static void animationCallback(GPTDriver* driver);
 
@@ -18,16 +17,22 @@ static const GPTConfig lightAnimationConfig = {
 
 static void animationCallback(GPTDriver* _driver) {
     (void)_driver;
+    static uint64_t tickCount = 0;
 
     updateTimeout();
 
-    uint8_t fps = getCurrentProfile()->fps;
-    if (fps == REACTIVE_FPS) {
-        fps = getReactiveFps();
+    uint8_t profileFps = getCurrentProfile()->fps;
+    if (profileFps == REACTIVE_FPS) {
+        profileFps = getReactiveFps();
     }
     
-    gptChangeInterval(_driver, ANIMATION_TIMER_FREQUENCY/fps);
-    executeProfile();
+    if (tickCount % FPS_TO_TIEOUT(profileFps) == 0)
+        executeProfile();
+
+    if (tickCount % FPS_TO_TIEOUT(getOneShotEffect()->fps) == 0)
+        executeOneShotEffect();
+
+    tickCount++;
 }
 
 
