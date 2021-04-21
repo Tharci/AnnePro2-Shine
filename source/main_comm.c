@@ -24,7 +24,7 @@ enum LedMsgCode {           // Messages:
     LED_KEY_PRESSED,        // 1 byte: col (4 bits) + row (4 bits)
     LED_CAPS_ON,            // 0 byte
     LED_CAPS_OFF,           // 0 byte
-    LED_BLT_CONNECTING,     // 1 byte: 1-4
+    LEP2D_BLT_CONNECTING,   // 1 byte: 1-4
     LED_BLT_CONNECTED,      // 0 byte
     LED_BRIGHT_DOWN,        // 0 byte
     LED_BRIGHT_UP,          // 0 byte
@@ -38,6 +38,7 @@ enum LedMsgCode {           // Messages:
     LED_UPDATE_WEATHER,
     LED_SHOW_TEMP,
     LED_SHOW_TIME,
+    LED_MAIN_INIT_DONE,
 };
 
 
@@ -141,6 +142,9 @@ void main_comm_executeMsg(msg_t msg){
         case LED_SHOW_TIME:
             displayTime();
             break;
+
+        case LED_MAIN_INIT_DONE:
+            mainInitDoneCallback();
 
         default:
             break;

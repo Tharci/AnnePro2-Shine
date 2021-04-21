@@ -6,8 +6,10 @@
 #include "profiles.h"
 
 
+
 //// State ////
 
+static bool ledsNeedUpdate  = false;
 static bool ledState        = false;
 static bool ledTimeoutState = true; 
 static bool capsState       = false;
@@ -16,6 +18,7 @@ static bool gamingMode = false;
 static bool isLocked = false;
 static int8_t currentProfile = 0;
 static PowerPlan powerPlan = POWER_USB;
+static bool mainInitDone = false;
 
 static const systime_t numDisplaySpeed  = 400;
 static int8_t numToDisplay[20]; // numbers in the range of 0-9, number '-1' indicates '-' character
@@ -37,6 +40,53 @@ static bool bltLedOn = false;
 static systime_t bltLedLastSwitched = 0;
 /* */
 
+//// ////
+
+//// ANIMATION ////
+
+#define ANIMATION_TIMER_FREQUENCY   60
+#define FPS_TO_TIMEOUT(X) (ANIMATION_TIMER_FREQUENCY/X)
+
+static void animationCallback(GPTDriver* driver);
+
+
+// Lighting animation refresh timer
+static const GPTConfig lightAnimationConfig = {
+    .frequency = ANIMATION_TIMER_FREQUENCY,
+    .callback = animationCallback
+};
+
+
+static void animationCallback(GPTDriver* _driver) {
+    (void)_driver;
+    static uint64_t tickCount = 0;
+
+    updateTimeout();
+
+    executeOverlapEffect(tickCount);
+    executeOverlapEffects(tickCount);
+    executeProfile(tickCount);
+
+    if (ledsNeedUpdate)
+        ledPostProcess();
+
+    ledsNeedUpdate = false;
+
+    tickCount++;
+}
+
+
+void led_anim_init() {
+    led_state_init();
+
+    executeInit();
+    executeProfile();
+
+    gptStart(&GPTD_BFTM1, &lightAnimationConfig);
+    gptStartContinuous(&GPTD_BFTM1, 1);
+
+    // TODO: Register Startup Overlay Effect
+}
 //// ////
 
 
@@ -79,45 +129,129 @@ static led_t ledColors[70];
 //// ////
 
 
-//// One-Shot Effect ////
+//// Effects ////
+
+typedef enum {
+    EFF_WEAVE_GREEN = 0,
+    EFF_WEAVE_YELLOW,
+    EFF_WEAVE_RED,
+} EffectEnum;
+
+static const Effect effects[] = {
+    [EFF_WEAVE_GREEN]  = { effect_weave_green_init, effect_weave_tick, 60 },
+    [EFF_WEAVE_YELLOW] = { effect_weave_yellow_init, effect_weave_tick, 60 },
+    [EFF_WEAVE_RED]    = { effect_weave_red_init, effect_weave_tick, 60 },
+};
+
+Effect* getEffect(EffectEnum effect) {
+    return &effects[effect];
+}
+
+//// ////
+
+
+//// Overlap Effect ////
+/*
+ * Only one overlap effect is stored at a time.
+ * While an overlap effect is active, it overlaps 
+ * the active animation and overlay effects.
+ * Status indicators do not get overlapped.
+ */
 
 static led_t oneShotLedColors[70];
 
-OneShotEffect oneShotEffect = {
-    .tick = NULL
-};
+Effect* overlapEffect = NULL;
 
-void registerOneShotEffect(OneShotEffect effect) {
-    oneShotEffect = effect;
-    if (oneShotEffect.init) {
-        oneShotEffect.init(oneShotLedColors);
+void registerOverlapEffect(Effect* effect) {
+    if (effect) {
+        memset(oneShotLedColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+
+        overlapEffect = effect;
+        if (overlapEffect->init) {
+            overlapEffect->init(oneShotLedColors);
+        }
     }
-
-    memset(oneShotLedColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
 }
 
-bool oneShotEffectIsActive() {
-    return oneShotEffect.tick != NULL;
+bool overlapEffectIsActive() {
+    return overlapEffect != NULL;
 }
 
-void disableOneShotEffect() {
-    oneShotEffect.tick = NULL;
+void disableOverlapEffect() {
+    overlapEffect = NULL;
 }
 
-OneShotEffect* getOneShotEffect() {
-    return &oneShotEffect;
+Effect* getOverlapEffect() {
+    return overlapEffect;
 }
 
-void executeOneShotEffect(void) {
-    if (oneShotEffectIsActive()) {
-        if (!oneShotEffect.tick(oneShotLedColors)) {
-            disableOneShotEffect();
+void executeOverlapEffect(unsigned long tickCount) {
+    if (overlapEffectIsActive() && tickCount % FPS_TO_TIMEOUT(overlapEffect->fps) == 0) {
+        if (!overlapEffect->tick(oneShotLedColors)) {
+            disableOverlapEffect();
+        }
+
+        ledsNeedUpdate = true;
+    }
+}
+
+//// ////
+
+
+//// Overlay Effect ////
+/*
+ * Overlay effect is an one-shot animation that is rendered
+ * on top of the profile layer and under the status indicator layer.
+ */
+
+#define overlayEffectsBufferSize 10
+Effect* overlayEffects[overlayEffectsBufferSize];
+static int overlayEffectCount = 0;
+
+static led_t overlayLedColors[70];
+
+void registerOverlayEffect(Effect* effect) {
+    if (overlayEffectCount < overlayEffectsBufferSize) {
+        overlayEffects[overlayEffectCount++] = effect;
+        if (effect->init) {
+            effect->init(overlayLedColors);
+        }
+    }
+}
+
+void executeOverlayEffects(unsigned long tickCount) {
+    memset(overlayLedColors, 0, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+
+    for (int i = 0; i < overlayEffectCount; i++) {
+        if (tickCount % FPS_TO_TIMEOUT(overlayEffects[i]->fps) == 0) {
+            if (!overlayEffects[i]->tick(ledColorsPost)) {
+                for (int j = i; j < overlayEffectCount - 1; j++) {
+                    overlayEffects[j] = overlayEffects[j+1];
+                }
+
+                i--;
+                overlayEffectCount--;
+            }
+
+            for(int y = 0; y < NUM_ROW; y++) {
+                for (int x = 0; x < NUM_COLUMN; x++) {
+                    int idx = y * NUM_COLUMN + x;
+                    if (overlayLedColors[idx].red == 0 && overlayLedColors[idx].green == 0 && overlayLedColors[idx].blue == 0) {
+                        overlayLedColors[idx] = ledColorsPost[idx];
+                        ledsNeedUpdate = true;
+                    }
+                }
+            }
         }
     }
 }
 
 //// ////
 
+
+void mainInitDoneCallback(void) {
+    mainInitDone = true;
+}
 
 Profile* getCurrentProfile() {
     if (isLocked)
@@ -180,7 +314,10 @@ void updateTimeout() {
 }
 
 void ledPostProcess() {
-    if(ledState && ledTimeoutState && numToDisplayIdx < 0) {
+    if (overlapEffectIsActive()) {
+        memcpy(ledColorsPost, oneShotLedColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
+    }
+    else if(ledState && ledTimeoutState && numToDisplayIdx < 0) {
         memcpy(ledColorsPost, ledColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
     }
     else {
@@ -188,7 +325,14 @@ void ledPostProcess() {
     }
 
 
-    if (!isLocked && !oneShotEffectIsActive()) {
+    if (!isLocked) {
+        for (int i = 0; i < NUM_COLUMN * NUM_ROW; i++) {
+            if (!(overlayLedColors[i].red == 0 && overlayLedColors[i].green == 0 && overlayLedColors[i].blue == 0)) {
+                ledColorsPost[i] = overlayLedColors[i];
+            }
+        }
+
+
         if (brightness < 100) {
             for (int i = 0; i < NUM_COLUMN * NUM_ROW; i++) {
                 ledColorsPost[i].red = (ledColorsPost[i].red * brightness) / 100;
@@ -200,12 +344,11 @@ void ledPostProcess() {
 
         static const led_t capsColor = { 255, 25, 25 };
         if (capsState) {
-            ledColorsPost[28] = capsColor;
+            ledColorsPost[28] = capsColor;  
         }
 
 
         static const led_t bltColor = {0, 255, 30};
-
         if (bltState) {
             systime_t bltLedRate = bltState <= 4 ? bltConnBlinkSpeed : bltBroadBlinkSpeed;
 
@@ -254,12 +397,7 @@ void ledPostProcess() {
         }
     }
 
-    if (oneShotEffectIsActive()) {
-        memcpy(ledFinal, oneShotLedColors, NUM_COLUMN * NUM_ROW * sizeof(led_t));
-    }
-    else {
-        memcpy(ledFinal, ledColorsPost, NUM_COLUMN * NUM_ROW * sizeof(led_t));
-    }
+    memcpy(ledFinal, ledColorsPost, NUM_COLUMN * NUM_ROW * sizeof(led_t));
 }
 
 
@@ -282,8 +420,8 @@ void bltConnecting(uint8_t state) {
 
 void brightnessDown() {
     brightness -= 20;
-    if (brightness < 10)
-        brightness = 10;
+    if (brightness < 20)
+        brightness = 20;
 }
 
 void brightnessUp() {
@@ -304,7 +442,7 @@ void setCapsState(bool state) {
     capsState = state;
 }
 
-int8_t getBrightness(void) {
+int16_t getBrightness(void) {
     return brightness;
 }
 
@@ -324,44 +462,27 @@ void keyPressedCallback(uint8_t keyPos) {
     }
 }
 
-
-static OneShotEffect powerBattEffect = {
-    effect_power_batt_init,
-    effect_power_tick,
-    60
-};
-
-static OneShotEffect powerUsbEffect = {
-    effect_power_usb_init,
-    effect_power_tick,
-    60
-};
-
-static OneShotEffect powerMaxEffect = {
-    effect_power_max_init,
-    effect_power_tick,
-    60
-};
-
 void setPowerPlan(PowerPlan pp) {
     powerPlan = pp;
 
-    switch (powerPlan)
-    {
-    case POWER_BATT:
-        registerOneShotEffect(powerBattEffect);
-        break;
+    if (mainInitDone) {
+        switch (powerPlan)
+        {
+        case POWER_BATT:
+            registerOverlayEffect(getEffect(EFF_WEAVE_GREEN));
+            break;
+            
+        case POWER_USB:
+            registerOverlayEffect(getEffect(EFF_WEAVE_YELLOW));
+            break;
+            
+        case POWER_MAX:
+            registerOverlayEffect(getEffect(EFF_WEAVE_RED));
+            break;
         
-    case POWER_USB:
-        registerOneShotEffect(powerUsbEffect);
-        break;
-        
-    case POWER_MAX:
-        registerOneShotEffect(powerMaxEffect);
-        break;
-    
-    default:
-        break;
+        default:
+            break;
+        }
     }
 }
 
@@ -373,14 +494,22 @@ uint8_t getProfileCount(void) {
     return profileCount;
 }
 
-void executeProfile() {
-    if (ledState && ledTimeoutState) {
-        anim_tick tick = getCurrentProfile()->tick;
-        if (tick) tick(ledColors);
+void executeProfile(unsigned long tickCount) {
+    uint8_t profileFps = getCurrentProfile()->fps;
+    if (profileFps == REACTIVE_FPS) {
+        profileFps = getReactiveFps();
     }
+    
+    if (tickCount % FPS_TO_TIMEOUT(profileFps) == 0) {
+        if (ledState && ledTimeoutState)  {
+            anim_tick tick = getCurrentProfile()->tick;
+            if (tick) tick(ledColors);
+        }
 
-    executeKeypress();
-    ledPostProcess();
+        executeKeypress();
+
+        ledsNeedUpdate = true;
+    }
 }
 
 void executeInit() {

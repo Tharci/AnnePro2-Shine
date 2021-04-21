@@ -26,7 +26,14 @@ typedef struct {
     anim_init init; // == 0 when disabled
     oneShot_tick tick; 
     uint8_t fps;
-} OneShotEffect;
+} Effect;
+
+
+//////
+
+void blendColors(led_t* color1, led_t* color2, led_t* dest);
+
+//////
 
 
 uint8_t getReactiveFps(void);
@@ -95,10 +102,16 @@ void prof_weatherShowoff_tick(led_t* ledColors);
 
 
 
-void effect_power_batt_init(led_t* ledColors);
-void effect_power_usb_init(led_t* ledColors);
-void effect_power_max_init(led_t* ledColors);
-bool effect_power_tick(led_t* ledColors);
+void effect_weave_green_init(led_t* ledColors);
+void effect_weave_yellow_init(led_t* ledColors);
+void effect_weave_red_init(led_t* ledColors);
+bool effect_weave_tick(led_t* ledColors);
+
+void effect_blt_init(uint8_t bltState);
+void effect_blinking_disable(void);
+void effect_blinking_set_speed(systime_t speed);
+void effect_blinking_init(led_t* ledColors);
+bool effect_blinking_tick(led_t* ledColors);
 
 
 
